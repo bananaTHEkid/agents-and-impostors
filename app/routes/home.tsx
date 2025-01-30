@@ -4,8 +4,8 @@ import Head from "../components/header/header";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
+    { title: "GAME" },
+    { name: "description", content: "GAME APP" },
   ];
 }
 
