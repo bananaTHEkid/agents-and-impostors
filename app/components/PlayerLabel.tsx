@@ -1,8 +1,9 @@
 
-export function Login() {
+export default function PlayerLabel() {
   return (
-    <main className="flex items-center justify-center pt-16 pb-4">
-
-    </main>
+    <div>
+      <label>Player Name: </label>
+      <span>John Doe</span>
+    </div>
   );
 }
