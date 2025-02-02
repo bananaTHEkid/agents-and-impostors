@@ -1,9 +1,8 @@
-import Head from "./header";
+import Head from './Header'
 
-export function Login() {
+export default function Lobby() {
   return (
-    <main className="flex items-center justify-center pt-16 pb-4">
-
-    </main>
+    <Head />
+    
   );
 }

@@ -1,4 +1,4 @@
-import Head from "./header";
+import Head from "./Header";
 
 export function Login() {
   return (

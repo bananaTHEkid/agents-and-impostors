@@ -1,4 +1,3 @@
-import Head from "./header";
 
 export function Login() {
   return (
