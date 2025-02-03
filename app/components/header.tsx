@@ -1,7 +1,7 @@
 export default function Head(){
     return (
-        <main>
-            <header style={{textAlign: 'center', fontSize: '48px', margin: '20px 0'} }>
+        <main className="top-5 justify-self-start">
+            <header className="top-5 text-7xl w-full">
                 GAME
             </header>
         </main>

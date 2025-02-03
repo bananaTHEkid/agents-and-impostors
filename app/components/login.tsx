@@ -1,4 +1,5 @@
 import Head from "./Header";
+import { NavLink } from "react-router";
 
 export function Login() {
   return (
@@ -9,12 +10,17 @@ export function Login() {
           <input type="text" placeholder="name"></input>
           <input type="text" placeholder="Room Code"></input>
           <div className="grid grid-cols-2 gap-4">
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" >
-              Create Room
-            </button>
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-              Join Room
-            </button>
+            <NavLink to="/lobby">
+              <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" >
+                Create Room
+              </button>
+            </NavLink>
+
+            <NavLink to="/lobby">
+              <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Join Room
+              </button>
+            </NavLink>
           </div>
         </div>
       </div>
