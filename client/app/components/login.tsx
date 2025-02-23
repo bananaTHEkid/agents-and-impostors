@@ -1,7 +1,7 @@
 import Head from "./Header";
 import { NavLink } from "react-router";
 import { useEffect, useState } from "react";
-import { setegid } from "process";
+import WebSocketService from "../websocket";
 
 export function Login() {
 
@@ -9,20 +9,15 @@ export function Login() {
   const [name, setName] = useState("");
   const [lobbyCode, setlobbyCode] = useState("");
 
-  const postData = () => {
-    fetch("http://localhost:3000/lobby/create-lobby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name, lobbyCode }),
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        console.log("Response data: ", data);
-        setData(data);
-      })
-      .catch((error) => console.error("Error posting data:", error));
+  useEffect(() => {
+    WebSocketService.connect("ws://localhost:8080");
+  }, []);
+
+
+  const createLobby = () => {
+    const message = JSON.stringify({event: "create-lobby", data: {name: name, lobbyCode: lobbyCode}});
+    WebSocketService.sendMessage(message);
+    console.log("message sent", message);
   };
 
   return (
@@ -46,9 +41,9 @@ export function Login() {
           ></input>
 
           <div className="grid grid-cols-2 gap-4">
-            <NavLink to="/lobby">
+            <NavLink to="/">
               <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" 
-              onClick={postData}
+              onClick={createLobby}
               >
                 Create Room
               </button>
