@@ -1,37 +1,38 @@
 import sqlite3 from "sqlite3";
+import { open, Database } from "sqlite";
 
-const db = new sqlite3.Database("./chat.db", (err) => {
-    if (err) console.error("Error opening database:", err);
-    else console.log("Connected to SQLite DB");
-});
+let dbInstance: Database;
 
-// Create table if it doesn't exist
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            userrole TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-    
-    db.run(`
+/**
+ * Initializes the database.
+ * Uses an in-memory database if `useMemory` is true.
+ */
+export const initDB = async (useMemory = false) => {
+    dbInstance = await open({
+        filename: useMemory ? ":memory:" : "database.sqlite",
+        driver: sqlite3.Database
+    });
+
+    await dbInstance.exec(`
         CREATE TABLE IF NOT EXISTS lobbies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lobbycode TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
+            id TEXT PRIMARY KEY, 
+            lobby_code TEXT, 
+            status TEXT
+        );
+        CREATE TABLE IF NOT EXISTS players (
+            username TEXT PRIMARY KEY, 
+            lobby_id TEXT, 
+            team TEXT
+        );
     `);
+};
 
-    db.run(`CREATE TABLE IF NOT EXISTS users_lobbies (
-        user_id INTEGER,
-        lobby_id INTEGER,
-        FOREIGN KEY(user_id) REFERENCES users(id),
-        FOREIGN KEY(lobby_id) REFERENCES lobbies(id)
-    `)
-
-});
-
-
-export default db;
+/**
+ * Gets the database instance.
+ */
+export const getDB = () => {
+    if (!dbInstance) {
+        throw new Error("Database not initialized. Call initDB() first.");
+    }
+    return dbInstance;
+};
