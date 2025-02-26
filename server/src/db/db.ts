@@ -22,7 +22,8 @@ export const initDB = async (useMemory = false) => {
         CREATE TABLE IF NOT EXISTS players (
             username TEXT PRIMARY KEY, 
             lobby_id TEXT, 
-            team TEXT
+            team TEXT,
+            operation TEXT
         );
     `);
 };

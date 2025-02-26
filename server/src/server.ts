@@ -71,12 +71,51 @@ io.on("connection", (socket: Socket) => {
             return;
         }
 
-        const team = lobbies[lobbyId].players.length % 2 === 0 ? "agent" : "spy";
-        await dbInstance.run("INSERT INTO players (username, lobby_id, team) VALUES (?, ?, ?)", [username, lobbyId, team]);
+
+        await dbInstance.run("INSERT INTO players (username, lobby_id, team) VALUES (?, ?, '')", [username, lobbyId]);
         lobbies[lobbyId].players.push(username);
 
         socket.join(lobbyId);
-        io.to(lobbyId).emit("player-joined", { username, team });
+        io.to(lobbyId).emit("player-joined", { username});
+    });
+
+    socket.on("start-game", async ({ lobbyCode }) => {
+        // Check if the lobby exists
+        const lobby = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
+        if (!lobby) {
+            socket.emit("error", "Lobby does not exist");
+            return;
+        }
+        const lobbyId = lobby[0];
+
+        // Check if the game has already started
+        if (lobbies[lobbyId].status !== "waiting") {
+            socket.emit("error", "Game has already started");
+            return;
+        }
+
+        // Check if there are enough players
+        if (lobbies[lobbyId].players.length < 5) {
+            socket.emit("error", "Not enough players to start the game");
+            return;
+        }
+
+        // assign each player to a team with the following logic
+        // if there are 5-6 players, 2 impostors
+        // if there are 7-10 players, 3 impostors
+        // roles are assigned randomly
+        const players = lobbies[lobbyId].players;
+        const numImpostors = players.length <= 6 ? 2 : 3;
+        const impostors = players.slice().sort(() => 0.5 - Math.random()).slice(0, numImpostors);
+        const agents = players.filter((player) => !impostors.includes(player));
+
+        const dbInstance = getDB();
+        await dbInstance.run("UPDATE players SET team = 'agent' WHERE username IN (?)", [agents]);
+        await dbInstance.run("UPDATE players SET team = 'impostor' WHERE username IN (?)", [impostors]);
+
+        lobbies[lobbyId].status = "playing";
+        io.to(lobbyId).emit("game-started", { impostors });
+
     });
 
     socket.on("disconnect", () => {
