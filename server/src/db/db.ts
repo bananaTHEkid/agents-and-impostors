@@ -24,7 +24,8 @@ export const initDB = async (useMemory = false) => {
             lobby_id TEXT, 
             team TEXT,
             operation TEXT,
-            hidden BOOLEAN
+            hidden BOOLEAN,
+            win_status TEXT DEFAULT 'pending'
         );
     `);
 };
