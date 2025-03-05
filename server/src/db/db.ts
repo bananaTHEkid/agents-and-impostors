@@ -1,7 +1,7 @@
 import sqlite3 from "sqlite3";
 import { open, Database } from "sqlite";
 
-let dbInstance: Database;
+let dbInstance: Database | null = null;
 
 /**
  * Initializes the database.
@@ -23,7 +23,8 @@ export const initDB = async (useMemory = false) => {
             username TEXT PRIMARY KEY, 
             lobby_id TEXT, 
             team TEXT,
-            operation TEXT
+            operation TEXT,
+            hidden BOOLEAN
         );
     `);
 };
