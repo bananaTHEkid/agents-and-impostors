@@ -429,72 +429,58 @@ io.on("connection", (socket: Socket) => {
                 throw new Error(`Not enough players. Minimum required: ${GAME_CONFIG.MIN_PLAYERS}`);
             }
 
-            // Assign teams only (not operations yet)
-            const { impostors, agents, playerOperations } = await assignTeamsAndOperations(lobbyId, lobbyData.players);
+                    // Assign teams and operations immediately
+        const { impostors, agents, playerOperations } = await assignTeamsAndOperations(lobbyId, lobbyData.players);
 
-            await dbInstance.run("BEGIN TRANSACTION");
-            try {
-                for (const player of impostors) {
-                    await dbInstance.run(
-                        "UPDATE players SET team = 'impostor' WHERE username = ? AND lobby_id = ?",
-                        [player, lobbyId]
-                    );
-                }
+        await dbInstance.run("BEGIN TRANSACTION");
+        try {
+            // ... (Teamzuweisung in DB)
 
-                for (const player of agents) {
-                    await dbInstance.run(
-                        "UPDATE players SET team = 'agent' WHERE username = ? AND lobby_id = ?",
-                        [player, lobbyId]
-                    );
-                }
+            await dbInstance.run("COMMIT");
+        } catch (err) {
+            await dbInstance.run("ROLLBACK");
+            throw err;
+        }
 
-                await dbInstance.run("COMMIT");
-            } catch (err) {
-                await dbInstance.run("ROLLBACK");
-                throw err;
+        // Update lobby status
+        lobbyData.status = "playing";
+
+        // Emit event: Only send team assignments
+        io.to(lobbyId).emit("team-assignment", {
+            impostors,
+            agents
+        });
+
+        console.log("Teams assigned. Operation phase will begin immediately...");
+
+        // Operation Assignment Phase (Immediate)
+        console.log("Starting operation assignment...");
+
+        for (const { player, operation } of playerOperations) {
+            if (operation) {
+                await dbInstance.run(
+                    "UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?",
+                    [operation.name, player, lobbyId]
+                );
+
+                // Notify only the specific player about their operation
+                io.to(lobbyId).emit("operation-assigned", {
+                    player,
+                    operation: operation.name
+                });
+
+                console.log(`Assigned operation '${operation.name}' to ${player}`);
             }
+        }
 
-            // Update lobby status
-            lobbyData.status = "playing";
+        console.log("Operation phase completed.");
 
-            // Emit event: Only send team assignments
-            io.to(lobbyId).emit("team-assignment", {
-                impostors,
-                agents
-            });
+        // Notify all players that the operation phase is complete
+        io.to(lobbyId).emit("operation-phase-complete");
 
-            console.log("Teams assigned. Operation phase will begin soon...");
+        console.log("Voting phase will begin immediately");
 
-            // **Operation Assignment Phase (Delayed)**
-            setTimeout(async () => {
-                console.log("Starting operation assignment...");
-
-                for (const { player, operation } of playerOperations) {
-                    if (operation) {
-                        await dbInstance.run(
-                            "UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?",
-                            [operation.name, player, lobbyId]
-                        );
-
-                        // Notify only the specific player about their operation
-                        io.to(lobbyId).emit("operation-assigned", {
-                            player,
-                            operation: operation.name
-                        });
-
-                        console.log(`Assigned operation '${operation.name}' to ${player}`);
-
-                        // Delay between each player's operation reveal (e.g., 3 seconds)
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                    }
-                }
-
-                console.log("Operation phase completed.");
-
-                // Notify all players that the operation phase is complete
-                io.to(lobbyId).emit("operation-phase-complete");
-
-            }, 5000); // Delay before operation phase begins (e.g., 5 seconds)
+        //Voting phase starts immediately.
 
         } catch (error) {
             socket.emit("error", error instanceof Error ? error.message : "Unknown error");
@@ -544,7 +530,6 @@ io.on("connection", (socket: Socket) => {
             socket.emit("error", error instanceof Error ? error.message : "Unknown error");
         }
     });
-    
 
 });
 

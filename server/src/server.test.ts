@@ -4,7 +4,7 @@ import { app, startServer, stopServer, calculateWinConditions } from "../src/ser
 import { getDB } from "../src/db/db";
 import { DefaultEventsMap } from "@socket.io/component-emitter";
 
-jest.setTimeout(3000); // Set timeout to 30 seconds
+jest.setTimeout(3000); // Set timeout to 3 seconds
 
 describe("Game Server API Endpoints (In-Memory)", () => {
     beforeAll(async () => {
@@ -202,6 +202,154 @@ describe("Game Server API Endpoints (In-Memory)", () => {
             .catch(error => {
                 done.fail(error);
             });
+    });
+
+    it("should submit votes and calculate win conditions", async () => {
+        const db = getDB();
+        const lobbyResponse = await request(app).post("/create-lobby").send({ username: "creator" });
+        const { lobbyCode } = lobbyResponse.body;
+
+        const players = ["player1", "player2", "player3", "player4", "player5"];
+        for (const player of players) {
+            await db.run("INSERT INTO players (username, lobby_id, team) VALUES (?, ?, 'agent')", [player, lobbyResponse.body.lobbyId]);
+        }
+
+        const clientSocket = Client("http://localhost:5000");
+        clientSocket.on("connect", async () => {
+            for (const player of players) {
+                clientSocket.emit("submit-vote", { lobbyCode, username: player, targetPlayer: "player1" });
+            }
+
+            clientSocket.on("vote-submitted", async () => {
+                const votes = await db.all("SELECT * FROM votes WHERE lobby_id = ?", [lobbyResponse.body.lobbyId]);
+                expect(votes.length).toBe(players.length);
+
+                const eliminatedPlayer = await db.get("SELECT * FROM players WHERE username = 'player1' AND eliminated = 1");
+                expect(eliminatedPlayer).toBeDefined();
+
+                clientSocket.disconnect();
+            });
+        });
+    });
+
+    it("should handle invalid usernames", (done) => {
+        const clientSocket = Client("http://localhost:5000");
+
+        clientSocket.on("connect", async () => {
+            const createLobbyResponse = await request(app)
+                .post("/create-lobby")
+                .send({ username: "creator" });
+
+            expect(createLobbyResponse.status).toBe(200);
+            const { lobbyCode } = createLobbyResponse.body;
+
+            clientSocket.emit("join-lobby", { username: "invalid username!", lobbyCode });
+
+            clientSocket.on("error", (message) => {
+                expect(message).toBe("Invalid username");
+                clientSocket.disconnect();
+                done();
+            });
+        });
+    });
+
+    it("should handle game start with insufficient players", (done) => {
+        const clientSocket = Client("http://localhost:5000");
+
+        clientSocket.on("connect", async () => {
+            const createLobbyResponse = await request(app)
+                .post("/create-lobby")
+                .send({ username: "creator" });
+
+            expect(createLobbyResponse.status).toBe(200);
+            const { lobbyCode } = createLobbyResponse.body;
+
+            clientSocket.emit("start-game", { lobbyCode });
+
+            clientSocket.on("error", (message) => {
+                expect(message).toBe("Not enough players. Minimum required: 5");
+                clientSocket.disconnect();
+                done();
+            });
+        });
+    });
+
+    it("should handle duplicate usernames in the same lobby", (done) => {
+        const clientSocket = Client("http://localhost:5000");
+
+        clientSocket.on("connect", async () => {
+            const createLobbyResponse = await request(app)
+                .post("/create-lobby")
+                .send({ username: "creator" });
+
+            expect(createLobbyResponse.status).toBe(200);
+            const { lobbyCode } = createLobbyResponse.body;
+
+            clientSocket.emit("join-lobby", { username: "creator", lobbyCode });
+
+            clientSocket.on("error", (message) => {
+                expect(message).toBe("Username already in use");
+                clientSocket.disconnect();
+                done();
+            });
+        });
+    });
+    it("should create a new lobby", async () => {
+        const response = await request(app).post("/create-lobby").send({ username: "creator" });
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty("lobbyId");
+        expect(response.body).toHaveProperty("lobbyCode");
+    });
+
+    it("should allow a player to join an existing lobby", (done) => {
+        const clientSocket = Client("http://localhost:5000");
+
+        clientSocket.on("connect", async () => {
+            const createLobbyResponse = await request(app)
+                .post("/create-lobby")
+                .send({ username: "creator" });
+
+            expect(createLobbyResponse.status).toBe(200);
+            expect(createLobbyResponse.body).toHaveProperty("lobbyCode");
+
+            const { lobbyCode } = createLobbyResponse.body;
+
+            clientSocket.emit("join-lobby", { username: "testuser", lobbyCode });
+
+            clientSocket.on("player-joined", ({ username }) => {
+                expect(username).toBe("testuser");
+                clientSocket.disconnect();
+                done();
+            });
+
+            clientSocket.on("error", (message) => {
+                clientSocket.disconnect();
+                done.fail(new Error(message));
+            });
+        });
+
+        clientSocket.on("connect_error", (err) => {
+            console.error("Connection error:", err);
+            done.fail(new Error("Connection error"));
+        });
+
+        clientSocket.on("disconnect", (reason) => {
+            console.log("Client disconnected:", reason);
+        });
+    });
+
+    it("should not allow a player to join a non-existent lobby", (done) => {
+        const clientSocket = Client("http://localhost:5000");
+
+        clientSocket.on("connect", async () => {
+            clientSocket.emit("join-lobby", { username: "testuser", lobbyCode: "nonexistent" });
+
+            clientSocket.on("error", (message) => {
+                expect(message).toBe("Lobby does not exist");
+                clientSocket.disconnect();
+                done();
+            });
+        });
     });
 
     afterAll(async () => {
