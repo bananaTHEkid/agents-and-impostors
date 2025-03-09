@@ -13,31 +13,38 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
 
   useEffect(() => {
     if (!socket) return;
-  
+
+    // Get initial game state
     socket.emit('get_game_state', { lobbyCode });
-  
+
+    // Listen for game state updates
     socket.on('game_state', (data) => {
       setGameData(data);
     });
-  
+
+    // Listen for player updates
     socket.on('player_list', (data) => {
       setPlayers(data.players);
     });
-  
+
+    // Listen for new messages/prompts
     socket.on('game_message', (message) => {
       setMessages(prev => [...prev, message]);
     });
-  
+
+    // Listen for errors
     socket.on('game_error', (error) => {
       setErrorMessage(error.message);
     });
-  
+
+    // Listen for game end
     socket.on('game_ended', () => {
+      // Show final scores or end game message before exiting
       setTimeout(() => {
         onExitGame();
       }, 5000);
     });
-  
+
     return () => {
       socket.off('game_state');
       socket.off('player_list');
@@ -50,13 +57,13 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
   const handleSubmitResponse = (e) => {
     e.preventDefault();
     if (!userInput.trim()) return;
-  
-    socket.emit('submit-vote', {
+
+    socket.emit('submit_response', {
       lobbyCode,
       username,
-      targetPlayer: userInput
+      response: userInput
     });
-  
+    
     setUserInput('');
   };
 
@@ -89,7 +96,9 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
               {errorMessage}
             </Alert>
           )}
+          
           <div className="row">
+            {/* Game content area */}
             <div className="col-md-8">
               <div className="game-messages p-3 border rounded" style={{ height: '400px', overflowY: 'auto' }}>
                 {messages.map((msg, index) => (
@@ -108,6 +117,7 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
                   </div>
                 ))}
               </div>
+              
               <Form onSubmit={handleSubmitResponse} className="mt-3">
                 <Form.Group className="d-flex">
                   <Form.Control
@@ -117,27 +127,45 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
                     onChange={(e) => setUserInput(e.target.value)}
                     disabled={!canSubmitResponse()}
                   />
-                  <Button variant="primary" type="submit" className="ms-2" disabled={!canSubmitResponse()}>
+                  <Button 
+                    variant="primary" 
+                    type="submit" 
+                    className="ms-2"
+                    disabled={!canSubmitResponse()}
+                  >
                     Submit
                   </Button>
                 </Form.Group>
               </Form>
             </div>
+            
+            {/* Players sidebar */}
             <div className="col-md-4">
               <h5>Players</h5>
               <ListGroup>
                 {players.map((player, index) => (
-                  <ListGroup.Item key={index} className={`d-flex justify-content-between align-items-center ${gameData?.currentPlayer === player.username ? 'bg-light' : ''}`}>
+                  <ListGroup.Item 
+                    key={index}
+                    className={`d-flex justify-content-between align-items-center ${
+                      gameData?.currentPlayer === player.username ? 'bg-light' : ''
+                    }`}
+                  >
                     {player.username}
                     <span className="badge bg-secondary">{player.score || 0} pts</span>
                   </ListGroup.Item>
                 ))}
               </ListGroup>
+              
               {gameData && (
                 <div className="game-info mt-4">
                   <h5>Game Info</h5>
                   <p>Round: {gameData.round} / {gameData.totalRounds}</p>
-                  <p>Status: <span className="badge bg-info">{gameData.currentState.replace('_', ' ')}</span></p>
+                  <p>
+                    Status: {' '}
+                    <span className="badge bg-info">
+                      {gameData.currentState.replace('_', ' ')}
+                    </span>
+                  </p>
                 </div>
               )}
             </div>
@@ -146,7 +174,6 @@ const GameRoom = ({ lobbyCode, onExitGame }) => {
       </Card>
     </Container>
   );
-
 };
 
 export default GameRoom;
