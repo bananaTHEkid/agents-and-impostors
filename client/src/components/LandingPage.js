@@ -1,38 +1,12 @@
 import React, { useState } from 'react';
 import { Container, Card, Button, Form, Alert } from 'react-bootstrap';
 import axios from 'axios';
-import { io } from 'socket.io-client';
-
-const socket = io('http://localhost:5000');
+import { useSocket } from '../contexts/SocketContext';
 
 const LandingPage = ({ onJoinGame }) => {
   const [username, setUsername] = useState('');
-  const [lobbyCode, setLobbyCode] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-
-  const handleJoinLobby = async () => {
-    if (!username) {
-      setErrorMessage('Please enter your name');
-      return;
-    }
-    if (!lobbyCode) {
-      setErrorMessage('Please enter lobby code');
-      return;
-    }
-
-    socket.emit('join-lobby', { username, lobbyCode });
-
-    socket.on('player-joined', ({ username, team }) => {
-      sessionStorage.setItem('lobbyCode', lobbyCode);
-      sessionStorage.setItem('username', username);
-      sessionStorage.setItem('isHost', 'false');
-      onJoinGame(lobbyCode);
-    });
-
-    socket.on('error', (message) => {
-      setErrorMessage(message);
-    });
-  };
+  const { socket } = useSocket();
 
   const handleCreateLobby = async () => {
     if (!username) {
@@ -77,19 +51,7 @@ const LandingPage = ({ onJoinGame }) => {
                 onChange={(e) => setUsername(e.target.value)}
               />
             </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Enter lobby code</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter lobby code"
-                value={lobbyCode}
-                onChange={(e) => setLobbyCode(e.target.value)}
-              />
-            </Form.Group>
-            <Button variant="primary" onClick={handleJoinLobby}>
-              Join Lobby
-            </Button>
-            <Button variant="secondary" onClick={handleCreateLobby} className="ml-2">
+            <Button variant="primary" onClick={handleCreateLobby}>
               Create Lobby
             </Button>
           </Form>

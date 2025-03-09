@@ -4,6 +4,8 @@ import { Server, Socket } from "socket.io";
 import cors from "cors";
 import { initDB, getDB } from "./db/db";
 
+
+
 // Define types for better type safety
 interface Lobby {
     lobbyCode: string;
@@ -539,11 +541,17 @@ export { app, server };
 
 // Start the server
 const startServer = async (useInMemory: boolean = false) => {
-    await initializeDatabase(useInMemory);
-    const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-    });
+    try {
+        console.log("Server wird gestartet...");
+        await initializeDatabase(useInMemory);
+        const PORT = process.env.PORT || 5000;
+        server.listen(PORT, () => {
+            console.log(`Server is running on port ${PORT}`);
+        });
+    } catch (error) {
+        console.error('Failed to start the server:', error);
+        process.exit(1); // Exit the process with an error code
+    }
 };
 
 // Stop the server

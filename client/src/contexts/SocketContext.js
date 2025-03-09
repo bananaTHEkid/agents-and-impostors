@@ -10,8 +10,6 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    // Create socket connection 
-    // Replace with your actual backend URL
     const socketInstance = io('http://localhost:5000', {
       transports: ['websocket'],
       autoConnect: true
@@ -29,7 +27,6 @@ export const SocketProvider = ({ children }) => {
 
     setSocket(socketInstance);
 
-    // Clean up the socket on component unmount
     return () => {
       socketInstance.disconnect();
     };

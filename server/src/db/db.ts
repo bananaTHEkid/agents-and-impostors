@@ -8,26 +8,31 @@ let dbInstance: Database | null = null;
  * Uses an in-memory database if `useMemory` is true.
  */
 export const initDB = async (useMemory = false) => {
-    dbInstance = await open({
-        filename: useMemory ? ":memory:" : "database.sqlite",
-        driver: sqlite3.Database
-    });
+    try {
+        dbInstance = await open({
+            filename: useMemory ? ":memory:" : "database.sqlite",
+            driver: sqlite3.Database
+        });
 
-    await dbInstance.exec(`
-        CREATE TABLE IF NOT EXISTS lobbies (
-            id TEXT PRIMARY KEY, 
-            lobby_code TEXT, 
-            status TEXT
-        );
-        CREATE TABLE IF NOT EXISTS players (
-            username TEXT PRIMARY KEY, 
-            lobby_id TEXT, 
-            team TEXT,
-            operation TEXT,
-            hidden BOOLEAN,
-            win_status TEXT DEFAULT 'pending'
-        );
-    `);
+        await dbInstance.exec(`
+            CREATE TABLE IF NOT EXISTS lobbies (
+                id TEXT PRIMARY KEY, 
+                lobby_code TEXT, 
+                status TEXT
+            );
+            CREATE TABLE IF NOT EXISTS players (
+                username TEXT PRIMARY KEY, 
+                lobby_id TEXT, 
+                team TEXT,
+                operation TEXT,
+                hidden BOOLEAN,
+                win_status TEXT DEFAULT 'pending'
+            );
+        `);
+    } catch (error) {
+        console.error('Failed to initialize the database:', error);
+        throw error; // Rethrow the error to be caught in the startServer function
+    }
 };
 
 /**
