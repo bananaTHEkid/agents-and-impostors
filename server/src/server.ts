@@ -561,4 +561,6 @@ const stopServer = () => {
     });
 };
 
+startServer();
+
 export { startServer, stopServer, calculateWinConditions, assignTeamsAndOperations, generateOperationInfo };
