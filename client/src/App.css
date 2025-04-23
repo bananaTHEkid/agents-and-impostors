@@ -1,85 +1,42 @@
-/* General Styles */
-body {
-  background-color: #f8f9fa;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
 }
 
-/* Landing Page */
-.landing-card {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
-.landing-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* Lobby Card */
-.lobby-card {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
 }
 
-/* Game Messages */
-.game-messages {
-  background-color: white;
-  border: 1px solid #dee2e6;
+.card {
+  padding: 2em;
 }
 
-.system-message {
-  font-style: italic;
-  color: #6c757d;
-  padding: 5px 0;
-}
-
-.prompt-message {
-  background-color: #e9ecef;
-  padding: 10px;
-  border-radius: 5px;
-  margin: 10px 0;
-  border-left: 4px solid #0d6efd;
-}
-
-.player-message {
-  padding: 8px 0;
-}
-
-/* Button Animations */
-.btn-primary {
-  transition: all 0.2s ease;
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(13, 110, 253, 0.3);
-}
-
-/* Player List */
-.list-group-item {
-  transition: background-color 0.2s ease;
-}
-
-.list-group-item:hover {
-  background-color: #f8f9fa;
-}
-
-/* Game board */
-.game-info {
-  background-color: #f8f9fa;
-  padding: 15px;
-  border-radius: 5px;
-  border: 1px solid #dee2e6;
-}
-
-/* Badge styles */
-.badge {
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  padding: 5px 8px;
-}
-
-/* Form input focus */
-.form-control:focus {
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-  border-color: #86b7fe;
+.read-the-docs {
+  color: #888;
 }

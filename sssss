@@ -1,0 +1,115 @@
+[33mcommit d1f9ab14ce3047525f4ffe17220781024568b3f3[m[33m ([m[1;36mHEAD -> [m[1;32mtemp[m[33m)[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Sun Mar 9 01:19:38 2025 +0100
+
+    Revert "refactor server startup logic for improved error handling, update package scripts for development, and clean up socket connection in LandingPage component"
+    
+    This reverts commit 7ef0acf5e9d6dd5a40ba64b9f81d131a0f0a07bf.
+
+[33mcommit 7ef0acf5e9d6dd5a40ba64b9f81d131a0f0a07bf[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Sun Mar 9 01:15:10 2025 +0100
+
+    refactor server startup logic for improved error handling, update package scripts for development, and clean up socket connection in LandingPage component
+
+[33mcommit 77b21cff167732c967b190ca6219325f2ebf92c9[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Sun Mar 9 00:47:20 2025 +0100
+
+    refactor game start logic to assign teams and operations immediately, update lobby status, and initiate voting phase without delay; enhance tests for vote submission and error handling
+
+[33mcommit 83fd1f760ead311b52cc7c2202e42079ce7712ac[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Sat Mar 8 23:11:40 2025 +0100
+
+    implement player scoring system and update game state management
+
+[33mcommit e4f404a7af30ad0c62e093a5aac263d98a33da7f[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Thu Mar 6 00:40:37 2025 +0100
+
+    add ReadMe documentation, update database schema for win status, and enhance server tests for game logic and win conditions
+
+[33mcommit 995f969cd8e544eebe44a6a3fafc241c666091e3[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Wed Mar 5 23:13:05 2025 +0100
+
+    refactor database initialization and enhance game server tests with improved socket handling and timeout adjustments
+
+[33mcommit d1d042cbb338d84e6cbbd6fbbbf6d656ffa3121d[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Thu Feb 27 00:45:24 2025 +0100
+
+    add operation column to players table and implement game start logic with team assignment
+
+[33mcommit 4acf44bce4c2203c78299e458b193a39589da55c[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Thu Feb 27 00:19:18 2025 +0100
+
+    add test cases and correct create-lobby
+
+[33mcommit ccbb56f6937a9b045e445f2b0edbe09d2050159e[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Tue Feb 25 22:39:49 2025 +0100
+
+    remove unused components and files from client and server
+
+[33mcommit 50c014e7cc93f93671ea24046728c883a36422d6[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Sun Feb 23 19:29:40 2025 +0100
+
+    adding server to project and adding subfolder for client
+
+[33mcommit 02bbb5c636d2938a64400be7da85f75294bb8290[m
+Author: Tahir Akpinar <tahir111@outlook.de>
+Date:   Wed Feb 5 00:12:23 2025 +0100
+
+    working on first POST
+
+[33mcommit 65bd294d902ec09ce65228c456f9ee01621551de[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Mon Feb 3 16:32:08 2025 +0100
+
+    changes to frontend styling
+
+[33mcommit 19a3b8b310ee0d76dffcedd1d35fcbcafb935fad[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Sun Feb 2 15:29:09 2025 +0100
+
+    delete lobby.tsx
+
+[33mcommit f680baa15e63aed6a29c1ebcaa9b8a1163d5d074[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Sun Feb 2 15:16:24 2025 +0100
+
+    lobby changes
+
+[33mcommit d5b33ee90e756ea6205b56b8ee9495f3fccd0d33[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Sun Feb 2 15:01:20 2025 +0100
+
+    new route lobby
+
+[33mcommit 700a37c055f54a6f260e1677ecb2d3d84219b0fe[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Sun Feb 2 13:03:18 2025 +0100
+
+    add structuring components
+
+[33mcommit 52977fe883bab2173f24f6bb14232ffe1f1a8337[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Fri Jan 31 00:28:20 2025 +0100
+
+    testing
+
+[33mcommit dedaa1e8ffef918fe81a812352a5154e483f179e[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Fri Jan 31 00:06:30 2025 +0100
+
+    initial commit
+
+[33mcommit 2acc28d6e01ff3c588d70a3de4b6492210fe611a[m
+Author: Tahir Akpinar <ta223789@fh-muenster.de>
+Date:   Thu Jan 30 22:20:16 2025 +0100
+
+    Initial commit from create-react-router

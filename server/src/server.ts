@@ -16,7 +16,7 @@ const server = createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000",
+        origin: "localhost:3000",
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -127,9 +127,10 @@ const initializeDatabase = async (useInMemory: boolean = false) => {
 
 // Middleware
 app.use(express.json());
+
 app.use(cors({
-    origin: "http://localhost:3000",
-    credentials: true
+    origin: "http://localhost:3000", // Erlaubt Anfragen von Ihrem Frontend
+    credentials: true, // Erlaubt Cookies und andere Anmeldeinformationen
 }));
 
 // More robust lobby creation
@@ -552,5 +553,7 @@ const stopServer = () => {
         console.log('Server stopped');
     });
 };
+
+startServer();
 
 export { startServer, stopServer, calculateWinConditions, assignTeamsAndOperations, generateOperationInfo };

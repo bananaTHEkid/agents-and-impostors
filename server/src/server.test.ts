@@ -11,10 +11,24 @@ describe("Game Server API Endpoints (In-Memory)", () => {
         await startServer(true); // Use in-memory DB
     });
 
+    let clientSockets: Socket[] = [];
+
+
     beforeEach(async () => {
         const db = getDB();
         await db.exec("DELETE FROM players");
         await db.exec("DELETE FROM lobbies");
+    });
+
+        
+    afterEach(() => {
+        // Ensure all client sockets disconnect properly
+        clientSockets.forEach((socket) => {
+            if (socket.connected) {
+                socket.disconnect();
+            }
+        });
+        clientSockets = [];
     });
 
     it("should create a new lobby", async () => {
@@ -37,9 +51,9 @@ describe("Game Server API Endpoints (In-Memory)", () => {
 
     it("should allow a player to join an existing lobby", (done) => {
         const clientSocket = Client("http://localhost:5000");
+        clientSockets.push(clientSocket); // Store the socket reference for cleanup
 
         clientSocket.on("connect", async () => {
-            // Create a new lobby first
             const createLobbyResponse = await request(app)
                 .post("/create-lobby")
                 .send({ username: "creator" });
@@ -49,30 +63,20 @@ describe("Game Server API Endpoints (In-Memory)", () => {
 
             const { lobbyCode } = createLobbyResponse.body;
 
-            // Join the lobby with another player
             clientSocket.emit("join-lobby", { username: "testuser", lobbyCode });
 
-            // Listen for the 'player-joined' event
             clientSocket.on("player-joined", ({ username }) => {
                 expect(username).toBe("testuser");
-                clientSocket.disconnect();
                 done();
             });
 
-            // Handle potential errors
             clientSocket.on("error", (message) => {
-                clientSocket.disconnect();
                 done.fail(new Error(message));
             });
         });
 
         clientSocket.on("connect_error", (err) => {
-            console.error("Connection error:", err);
-            done.fail(new Error("Connection error"));
-        });
-
-        clientSocket.on("disconnect", (reason) => {
-            console.log("Client disconnected:", reason);
+            done.fail(new Error("Connection error: " + err.message));
         });
     });
 
@@ -351,6 +355,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
             });
         });
     });
+
 
     afterAll(async () => {
         await stopServer();
