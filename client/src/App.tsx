@@ -1,14 +1,8 @@
 import { useEffect, useState } from "react";
-import { io, Socket } from "socket.io-client";
-import axios from "axios";
-import { Button } from "./components/ui/button";
-import { Card, CardContent } from "./components/ui/card";
-import { motion } from "framer-motion";
+import { SocketProvider, useSocket } from "./contexts/SocketContext";
 import LandingPage from "./components/LandingPage.tsx";
 import GameLobby from "./components/GameLobby.tsx";
 import GameRoom from "./components/GameRoom.tsx";
-
-const socket: Socket = io("http://localhost:5000");
 
 enum View {
   Landing,
@@ -16,15 +10,15 @@ enum View {
   Game,
 }
 
-const App = () => {
+const AppContent = () => {
+  const { socket } = useSocket();
   const [view, setView] = useState<View>(View.Landing);
   const [lobbyCode, setLobbyCode] = useState("");
-  const [username, setUsername] = useState("");
-  const [lobbyId, setLobbyId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<string[]>([]);
 
   useEffect(() => {
-    socket.on("team-assignment", (data) => addMessage(`Team assigned: ${data.team}`));
+    if (!socket) return;
+
+    socket.on("team-assignment", () => addMessage(`Team assigned`));
     socket.on("operation-assigned", (data) => addMessage(`Operation assigned: ${data.operation}`));
     socket.on("operation-phase-complete", () => addMessage("Operation phase completed."));
     socket.on("vote-submitted", () => addMessage("A vote was submitted."));
@@ -36,14 +30,12 @@ const App = () => {
     });
     
     socket.on("join-success", (data) => {
-      setLobbyId(data.lobbyId);
       setLobbyCode(data.lobbyCode);
       addMessage(`Successfully joined lobby: ${data.lobbyCode}`);
       setView(View.Lobby);
     });
 
     return () => {
-      socket.disconnect();
       socket.off("team-assignment");
       socket.off("operation-assigned");
       socket.off("operation-phase-complete");
@@ -53,10 +45,10 @@ const App = () => {
       socket.off("player-joined");
       socket.off("join-success");
     };
-  }, []);
+  }, [socket]);
 
   const addMessage = (msg: string) => {
-    setMessages((prev) => [...prev, msg]);
+    console.log(msg); // Log messages instead of storing them
   };
 
   const handleJoinGame = (code: string) => {
@@ -65,6 +57,7 @@ const App = () => {
   };
 
   const handleStartGame = () => {
+    if (!socket) return;
     socket.emit("start-game", { lobbyCode });
     setView(View.Game);
   };
@@ -72,8 +65,6 @@ const App = () => {
   const handleExitGame = () => {
     setView(View.Landing);
     setLobbyCode("");
-    setLobbyId(null);
-    setMessages([]);
   };
 
   return (
@@ -95,6 +86,14 @@ const App = () => {
         />
       )}
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <SocketProvider>
+      <AppContent />
+    </SocketProvider>
   );
 };
 

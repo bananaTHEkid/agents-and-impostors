@@ -7,22 +7,49 @@ import {
   ListGroup,
   Alert,
 } from "react-bootstrap";
-import { io } from "socket.io-client";
 import { GameRoomProps, GameState, Player } from "../types";
 import GameInfo from "./GameInfo";
-
-const socket = io("http://localhost:5000");
+import { useSocket } from "../contexts/SocketContext";
 
 const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
-  const [gameData, setGameData] = useState<GameState | null>(null);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [messages, setMessages] = useState<Array<{ type: string; text: string; from?: string }>>([]);
+  const { socket } = useSocket();
+  const [gameData, setGameData] = useState<GameState | null>(() => {
+    const saved = sessionStorage.getItem('gameData');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [players, setPlayers] = useState<Player[]>(() => {
+    const saved = sessionStorage.getItem('players');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [messages, setMessages] = useState<Array<{ type: string; text: string; from?: string }>>(() => {
+    const saved = sessionStorage.getItem('messages');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [userInput, setUserInput] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const username = sessionStorage.getItem("username");
 
+  // Save state to sessionStorage whenever it changes
+  useEffect(() => {
+    if (gameData) sessionStorage.setItem('gameData', JSON.stringify(gameData));
+  }, [gameData]);
+
+  useEffect(() => {
+    if (players.length) sessionStorage.setItem('players', JSON.stringify(players));
+  }, [players]);
+
+  useEffect(() => {
+    if (messages.length) sessionStorage.setItem('messages', JSON.stringify(messages));
+  }, [messages]);
+
+  // Handle socket connection and reconnection
   useEffect(() => {
     if (!socket) return;
+
+    // Reconnect to the game if we have a lobby code
+    if (lobbyCode && username) {
+      socket.emit("rejoin-game", { lobbyCode, username });
+    }
 
     // Get initial game state
     socket.emit("get-game-state", { lobbyCode });
@@ -56,8 +83,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for team and operation events
-    socket.on("team-assignment", (data) => {
-      // Update game state with team information
+    socket.on("team-assignment", () => {
       setMessages((prev) => [
         ...prev,
         {
@@ -68,7 +94,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     socket.on("operation-assigned", (data) => {
-      // Notify player about their operation
       setMessages((prev) => [
         ...prev,
         {
@@ -120,11 +145,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("vote-submitted");
       socket.off("game-results");
     };
-  }, [socket, lobbyCode, onExitGame]);
+  }, [socket, lobbyCode, username, onExitGame]);
 
   const handleSubmitResponse = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim()) return;
+    if (!userInput.trim() || !socket) return;
 
     // Determine if this is a vote or a regular response based on game state
     if (gameData?.currentState === "voting") {
@@ -145,6 +170,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   };
 
   const handleVote = (targetPlayer: string) => {
+    if (!socket) return;
     socket.emit("submit-vote", {
       lobbyCode,
       username,
@@ -153,6 +179,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   };
 
   const handleLeaveGame = () => {
+    if (!socket) return;
     socket.emit("leave-game", { lobbyCode, username });
     onExitGame();
   };
@@ -166,7 +193,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     }
 
     return (
-      gameData.currentState === "awaiting_responses" &&
+      gameData.currentState === "playing" &&
       !gameData.submittedPlayers?.includes(username || "")
     );
   };

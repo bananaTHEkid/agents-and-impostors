@@ -18,6 +18,7 @@ export interface Player {
   team?: string;
   operation?: string;
   isHost?: boolean;
+  score?: number;
 }
 
 export interface GameState {

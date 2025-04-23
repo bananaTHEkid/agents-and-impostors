@@ -17,7 +17,6 @@
     "express": "^4.21.2",
     "jest": "^29.7.0",
     "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "ts-jest": "^29.2.6"
@@ -29,8 +28,13 @@
     "@types/socket.io": "^3.0.2",
     "@types/sqlite3": "^5.1.0",
     "@types/supertest": "^6.0.2",
+    "combined-stream": "^1.0.8",
+    "delayed-stream": "^1.0.0",
+    "form-data": "^2.3.3",
     "nodemon": "^3.1.9",
-    "supertest": "^7.0.0",
+    "socket.io-client": "^4.7.2",
+    "superagent": "^3.8.3",
+    "supertest": "^2.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }

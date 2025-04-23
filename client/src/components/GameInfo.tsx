@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Badge } from 'react-bootstrap';
-import { io } from 'socket.io-client';
-
-const socket = io('http://localhost:5000');
+import { useSocket } from '../contexts/SocketContext';
 
 interface OperationInfo {
   targetPlayer?: string;
@@ -14,6 +12,7 @@ interface OperationInfo {
 }
 
 const GameInfo: React.FC = () => {
+  const { socket } = useSocket();
   const [operation, setOperation] = useState<string | null>(null);
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
   const [team, setTeam] = useState<string | null>(null);

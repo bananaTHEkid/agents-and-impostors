@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Container, Card, Button, ListGroup, Alert } from "react-bootstrap";
-import { io } from "socket.io-client";
+import { useSocket } from "../contexts/SocketContext";
 import { GameLobbyProps, Player } from "../types";
 
-const socket = io("http://localhost:5000");
-
 const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLobby }) => {
+  const { socket } = useSocket();
   const [players, setPlayers] = useState<Player[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [copySuccess, setCopySuccess] = useState("");
@@ -75,14 +74,18 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
   }, [socket, lobbyCode, onStartGame, onExitLobby]);
 
   const handleStartGame = () => {
-    socket.emit("start-game", { lobbyCode });
+    if (socket) {
+      socket.emit("start-game", { lobbyCode });
+    }
   };
 
   const handleLeaveLobby = () => {
-    socket.emit("leave-lobby", {
-      lobbyCode,
-      username: sessionStorage.getItem("username"),
-    });
+    if (socket) {
+      socket.emit("leave-lobby", {
+        lobbyCode,
+        username: sessionStorage.getItem("username"),
+      });
+    }
     onExitLobby();
   };
 

@@ -1,57 +1,74 @@
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-interface SocketContextProps {
+interface SocketContextType {
   socket: Socket | null;
-  connected: boolean;
+  isConnected: boolean;
 }
 
-const SocketContext = createContext<SocketContextProps | undefined>(undefined);
+const SocketContext = createContext<SocketContextType>({ socket: null, isConnected: false });
 
-export const useSocket = () => {
-  const context = useContext(SocketContext);
-  if (context === undefined) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
-  return context;
-};
+// Create a singleton socket instance outside of React's lifecycle
+let socketInstance: Socket | null = null;
 
-interface SocketProviderProps {
-  children: ReactNode;
-}
+export const useSocket = () => useContext(SocketContext);
 
-export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // Create socket connection 
-    // Replace with your actual backend URL
-    const socketInstance: Socket = io('http://localhost:5000', {
-      transports: ['websocket'],
-      autoConnect: true
-    });
+    // Only create a new socket if one doesn't exist
+    if (!socketInstance) {
+      socketInstance = io("http://localhost:5000", {
+        transports: ['websocket'],
+        upgrade: false,
+        forceNew: false,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+        auth: {
+          clientId: Date.now().toString()  // Add a unique client identifier
+        }
+      });
+    }
 
+    socketRef.current = socketInstance;
+
+    // Set up event listeners
     socketInstance.on('connect', () => {
-      console.log('Connected to server');
-      setConnected(true);
+      console.log('Socket connected with ID:', socketInstance?.id);
+      setIsConnected(true);
     });
 
-    socketInstance.on('disconnect', () => {
-      console.log('Disconnected from server');
-      setConnected(false);
+    socketInstance.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      setIsConnected(false);
     });
 
-    setSocket(socketInstance);
+    socketInstance.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setIsConnected(false);
+    });
 
-    // Clean up the socket on component unmount
+    // Force connect if not already connected
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
+
+    // Cleanup function
     return () => {
-      socketInstance.disconnect();
+      if (socketInstance) {
+        socketInstance.off('connect');
+        socketInstance.off('disconnect');
+        socketInstance.off('connect_error');
+      }
     };
-  }, []);
+  }, []); // Empty dependency array means this effect runs once on mount
 
   return (
-    <SocketContext.Provider value={{ socket, connected }}>
+    <SocketContext.Provider value={{ socket: socketRef.current, isConnected }}>
       {children}
     </SocketContext.Provider>
   );

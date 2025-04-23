@@ -11,7 +11,7 @@ interface Lobby {
     status: 'waiting' | 'playing' | 'completed';
 }
 
-const app: Application = express();
+export const app: Application = express();
 const server = createServer(app);
 
 const io = new Server(server, {
@@ -24,6 +24,9 @@ const io = new Server(server, {
 
 const lobbies: Record<string, Lobby> = {};
 const userSockets: Record<string, string> = {}; // Speichert die Zuordnung von Username zu Socket-ID
+
+// Add a map to track active connections
+const activeConnections = new Map<string, string>(); // socketId -> username
 
 // Validate username (example validation)
 const isValidUsername = (username: string): boolean => {
@@ -238,7 +241,8 @@ const generateOperationInfo = async (lobbyId: string, players: string[], teams: 
         }
     }
 };
-const calculateWinConditions = async (lobbyId: string, votes: Record<string, string>) => {
+
+export const calculateWinConditions = async (lobbyId: string, votes: Record<string, string>) => {
     const db = getDB();
     const playersData = await db.all(
         "SELECT username, team, operation, operation_info FROM players WHERE lobby_id = ?",
@@ -373,8 +377,64 @@ const calculateWinConditions = async (lobbyId: string, votes: Record<string, str
 
 // More robust socket event handlers in the connection logic
 io.on("connection", (socket: Socket) => {
+    console.log("New client connected:", socket.id);
+
+    // Clean up any existing socket for this user
+    const cleanupOldSocket = (username: string) => {
+        const oldSocketId = userSockets[username];
+        if (oldSocketId && oldSocketId !== socket.id) {
+            const oldSocket = io.sockets.sockets.get(oldSocketId);
+            if (oldSocket) {
+                oldSocket.disconnect(true);
+            }
+            delete userSockets[username];
+            activeConnections.delete(oldSocketId);
+        }
+    };
+
+    socket.on("rejoin-game", async ({ lobbyCode, username }) => {
+        try {
+            cleanupOldSocket(username);
+            const db = getDB();
+            const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+            
+            if (!lobby) {
+                socket.emit("error", { message: "Lobby not found" });
+                return;
+            }
+
+            // Get current game state
+            const gameState = await db.get("SELECT status, round, total_rounds FROM lobbies WHERE id = ?", [lobby.id]);
+            const players = await db.all("SELECT username, team, operation, score FROM players WHERE lobby_id = ?", [lobby.id]);
+            
+            // Update socket mapping
+            userSockets[username] = socket.id;
+            activeConnections.set(socket.id, username);
+            socket.join(lobby.id);
+
+            // Send current state to the reconnecting player
+            socket.emit("game-state", {
+                currentState: gameState.status,
+                round: gameState.round,
+                totalRounds: gameState.total_rounds
+            });
+
+            socket.emit("player-list", { players });
+
+            // Notify other players
+            socket.to(lobby.id).emit("game-message", {
+                type: "system",
+                text: `${username} has reconnected`
+            });
+        } catch (error) {
+            console.error("Error in rejoin-game:", error);
+            socket.emit("error", { message: "Failed to rejoin game" });
+        }
+    });
+
     socket.on("join-lobby", async ({ username, lobbyCode }) => {
         try {
+            cleanupOldSocket(username);
             if (!isValidUsername(username)) {
                 throw new Error("Invalid username");
             }
@@ -421,6 +481,7 @@ io.on("connection", (socket: Socket) => {
             // Add player to lobby
             lobbies[lobbyId].players.push(username);
             userSockets[username] = socket.id;
+            activeConnections.set(socket.id, username);
             socket.join(lobbyId);
             
             // Send to all clients in the lobby (including the new player)
@@ -627,12 +688,11 @@ io.on("connection", (socket: Socket) => {
     });
 
     socket.on("disconnect", () => {
-        for (const username in userSockets) {
-            if (userSockets[username] === socket.id) {
-                delete userSockets[username];
-                console.log(`Socket ${socket.id} for user ${username} disconnected. Entry removed.`);
-                break;
-            }
+        const username = activeConnections.get(socket.id);
+        if (username) {
+            delete userSockets[username];
+            activeConnections.delete(socket.id);
+            console.log(`Socket ${socket.id} for user ${username} disconnected. Entry removed.`);
         }
     });
 
@@ -657,16 +717,17 @@ io.on("connection", (socket: Socket) => {
     });
 });
 
-const PORT = process.env.PORT || 5000;
+export const startServer = async (port: number = 3000) => {
+  await initializeDatabase();
+  return new Promise<void>((resolve) => {
+    const portNumber = typeof port === 'number' ? port : 3000;
+    server.listen(portNumber, () => {
+      console.log(`Server running on port ${portNumber}`);
+      resolve();
+    });
+  });
+};
 
-(async () => {
-    try {
-        await initializeDatabase();
-        server.listen(PORT, () => {
-            console.log(`Server is running on http://localhost:${PORT}`);
-        });
-    } catch (error) {
-        console.error("Failed to start server:", error);
-        process.exit(1);
-    }
-})();
+export const stopServer = () => {
+  server.close();
+};
