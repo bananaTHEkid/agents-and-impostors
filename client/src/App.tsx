@@ -40,12 +40,18 @@ const App = () => {
 
   const createLobby = async () => {
     try {
-      const response = await axios.post("http://localhost:5000/create-lobby",
+      interface CreateLobbyResponse {
+        lobbyId: string;
+        lobbyCode: string;
+      }
+
+      const response = await axios.post<CreateLobbyResponse>("http://localhost:5000/create-lobby",
         {username},
         {withCredentials: true}
       );
-      setLobbyId(response.data.lobbyId);
-      setLobbyCode(response.data.lobbyCode);
+      const data = response.data;
+      setLobbyId(data.lobbyId);
+      setLobbyCode(data.lobbyCode);
       addMessage(`Lobby created: ${response.data.lobbyCode}`);
       setView(View.Lobby);
     } catch (err: any) {
