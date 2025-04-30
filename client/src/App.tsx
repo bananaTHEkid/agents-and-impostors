@@ -30,8 +30,8 @@ const AppContent = () => {
     });
     
     socket.on("join-success", (data) => {
-      setLobbyCode(data.lobbyCode);
       addMessage(`Successfully joined lobby: ${data.lobbyCode}`);
+      setLobbyCode(data.lobbyCode);
       setView(View.Lobby);
     });
 

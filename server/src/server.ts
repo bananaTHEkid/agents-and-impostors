@@ -5,10 +5,20 @@ import cors from "cors";
 import { initDB, getDB } from "./db/db";
 
 // Define types for better type safety
+// Add GamePhase enum to track game stages
+enum GamePhase {
+  WAITING = 'waiting',
+  TEAM_ASSIGNMENT = 'team_assignment',
+  OPERATION_ASSIGNMENT = 'operation_assignment',
+  VOTING = 'voting',
+  COMPLETED = 'completed'
+}
+
 interface Lobby {
     lobbyCode: string;
     players: string[];
     status: 'waiting' | 'playing' | 'completed';
+    phase: GamePhase; // Add phase tracking
 }
 
 export const app: Application = express();
@@ -16,7 +26,7 @@ const server = createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000",
+        origin: "http://localhost:5000",
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -139,8 +149,8 @@ const initializeDatabase = async (useInMemory: boolean = false) => {
 app.use(express.json());
 
 app.use(cors({
-    origin: "http://localhost:3000", // Allow requests from your frontend
-    credentials: true, // Allow cookies and other credentials
+    origin: "http://localhost:5000",
+    credentials: true,
 }));
 
 // More robust lobby creation
@@ -152,10 +162,14 @@ app.post("/create-lobby", async (req: Request, res: Response, next: NextFunction
         const lobbyId = Math.random().toString(36).substring(2, 8);
         const lobbyCode = generateLobbyCode();
 
-        await dbInstance.run("INSERT INTO lobbies (id, lobby_code, status) VALUES (?, ?, 'waiting')", [lobbyId, lobbyCode]);
-        lobbies[lobbyId] = { lobbyCode, players: [username], status: "waiting" };
+        await dbInstance.run("INSERT INTO lobbies (id, lobby_code, status, phase) VALUES (?, ?, 'waiting', ?)", [lobbyId, lobbyCode, GamePhase.WAITING]);
+        lobbies[lobbyId] = { lobbyCode, players: [username], status: "waiting", phase: GamePhase.WAITING };
 
         await dbInstance.run("INSERT INTO players (username, lobby_id, team) VALUES (?, ?, ?)", [username, lobbyId, "agent"]);
+        
+        // Emit player list to all clients in the lobby
+        io.to(lobbyId).emit("player-list", { players: lobbies[lobbyId].players });
+        
         res.json({ lobbyId, lobbyCode });
     } catch (error) {
         console.error("Fehler beim Erstellen der Lobby:", error);
@@ -432,24 +446,43 @@ io.on("connection", (socket: Socket) => {
         }
     });
 
-    socket.on("join-lobby", async ({ username, lobbyCode }) => {
+    socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, callback?: (response: any) => void) => {
         try {
+            const { username, lobbyCode } = data;
             cleanupOldSocket(username);
             if (!isValidUsername(username)) {
-                throw new Error("Invalid username");
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "Invalid username" 
+                    });
+                }
+                return;
             }
 
             const dbInstance = getDB();
             const lobby = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
 
             if (!lobby) {
-                throw new Error("Lobby does not exist");
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "Lobby does not exist" 
+                    });
+                }
+                return;
             }
 
             const [lobbyId, lobbyData] = lobby;
 
             if (lobbyData.status !== "waiting") {
-                throw new Error("Game has already started");
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "Game has already started" 
+                    });
+                }
+                return;
             }
 
             // Check if player is already in the lobby
@@ -459,7 +492,13 @@ io.on("connection", (socket: Socket) => {
             );
 
             if (existingPlayer) {
-                throw new Error("You are already in this lobby");
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "You are already in this lobby" 
+                    });
+                }
+                return;
             }
 
             // Check if username is taken in any lobby
@@ -469,7 +508,13 @@ io.on("connection", (socket: Socket) => {
             );
 
             if (usernameTaken) {
-                throw new Error("Username is already taken");
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "Username is already taken" 
+                    });
+                }
+                return;
             }
 
             // Add player to database
@@ -487,18 +532,28 @@ io.on("connection", (socket: Socket) => {
             // Send to all clients in the lobby (including the new player)
             io.to(lobbyId).emit("player-joined", { username, lobbyId });
             
-            // Send a successful join confirmation to the joining client only
-            socket.emit("join-success", { 
-                lobbyId, 
-                lobbyCode,
-                players: lobbies[lobbyId].players 
-            });
+            // Emit updated player list to all clients in the lobby
+            io.to(lobbyId).emit("player-list", { players: lobbies[lobbyId].players });
+            
+            // Send acknowledgment to the joining client
+            if (callback) {
+                callback({ 
+                    success: true,
+                    lobbyCode,
+                    players: lobbies[lobbyId].players 
+                });
+            }
 
             console.log(`Player ${username} joined lobby ${lobbyCode}`);
 
         } catch (error) {
             console.error("Error joining lobby:", error);
-            socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
+            if (callback) {
+                callback({ 
+                    success: false, 
+                    error: error instanceof Error ? error.message : "Unknown error" 
+                });
+            }
         }
     });
 
@@ -526,39 +581,48 @@ io.on("connection", (socket: Socket) => {
                 throw new Error(`Not enough players. Minimum required: ${GAME_CONFIG.MIN_PLAYERS}`);
             }
 
-            // Assign teams and operations immediately
-            const { impostors, agents, playerOperations } = await assignTeamsAndOperations(lobbyId, lobbyData.players);
-
-            await dbInstance.run("BEGIN TRANSACTION");
-            try {
-                // ... (Team assignment in DB)
-
-                await dbInstance.run("COMMIT");
-            } catch (err) {
-                await dbInstance.run("ROLLBACK");
-                throw err;
-            }
-
-            // Update lobby status
+            // Start game with first phase: TEAM_ASSIGNMENT
             lobbyData.status = "playing";
+            lobbyData.phase = GamePhase.TEAM_ASSIGNMENT;
+            
+            await dbInstance.run(
+                "UPDATE lobbies SET status = ?, phase = ? WHERE id = ?",
+                ["playing", GamePhase.TEAM_ASSIGNMENT, lobbyId]
+            );
 
             // Notify all players that the game has started
             io.to(lobbyId).emit("game-started", { 
                 message: "Game has started!",
-                players: lobbyData.players
+                players: lobbyData.players,
+                phase: GamePhase.TEAM_ASSIGNMENT
             });
+
+            // Begin TEAM_ASSIGNMENT phase - this happens automatically
+            console.log("Starting team assignment phase...");
+            
+            // Assign teams and operations immediately
+            const { impostors, agents, playerOperations } = await assignTeamsAndOperations(lobbyId, lobbyData.players);
+            
+            // Update lobby phase to OPERATION_ASSIGNMENT
+            lobbyData.phase = GamePhase.OPERATION_ASSIGNMENT;
+            await dbInstance.run(
+                "UPDATE lobbies SET phase = ? WHERE id = ?",
+                [GamePhase.OPERATION_ASSIGNMENT, lobbyId]
+            );
 
             // Emit event: Only send team assignments
             io.to(lobbyId).emit("team-assignment", {
                 impostors,
-                agents
+                agents,
+                phase: GamePhase.OPERATION_ASSIGNMENT
             });
 
-            console.log("Teams assigned. Operation phase will begin immediately...");
+            console.log("Teams assigned. Operation phase starting...");
 
-            // Operation Assignment Phase (Immediate)
+            // Operation Assignment Phase 
             console.log("Starting operation assignment...");
 
+            // Apply operations to players
             for (const { player, operation } of playerOperations) {
                 if (operation) {
                     await dbInstance.run(
@@ -567,23 +631,45 @@ io.on("connection", (socket: Socket) => {
                     );
 
                     // Notify only the specific player about their operation
-                    io.to(lobbyId).emit("operation-assigned", {
-                        player,
-                        operation: operation.name
-                    });
+                    const playerSocketId = userSockets[player];
+                    if (playerSocketId) {
+                        io.to(playerSocketId).emit("operation-assigned", {
+                            operation: operation.name
+                        });
+                    }
 
                     console.log(`Assigned operation '${operation.name}' to ${player}`);
                 }
             }
 
+            // Get player data with team assignments
+            const playersData = await dbInstance.all(
+                "SELECT username, team FROM players WHERE lobby_id = ?",
+                [lobbyId]
+            );
+
+            // Generate operation info for players
+            const teamLookup = Object.fromEntries(
+                playersData.map((p: { username: string; team: string }) => [p.username, p.team])
+            );
+            await generateOperationInfo(lobbyId, lobbyData.players, teamLookup);
+
             console.log("Operation phase completed.");
 
-            // Notify all players that the operation phase is complete
-            io.to(lobbyId).emit("operation-phase-complete");
+            // Update lobby phase to VOTING
+            lobbyData.phase = GamePhase.VOTING;
+            await dbInstance.run(
+                "UPDATE lobbies SET phase = ? WHERE id = ?",
+                [GamePhase.VOTING, lobbyId]
+            );
 
-            console.log("Voting phase will begin immediately");
+            // Notify all players that the operation phase is complete and voting begins
+            io.to(lobbyId).emit("phase-change", {
+                phase: GamePhase.VOTING,
+                message: "Operation phase completed. Voting phase begins!"
+            });
 
-            //Voting phase starts immediately.
+            console.log("Voting phase has begun");
 
         } catch (error) {
             socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
@@ -600,62 +686,73 @@ io.on("connection", (socket: Socket) => {
             }
             const [lobbyId, lobbyData] = lobbyEntry;
 
-            // Basic vote storage (you might need a more complex system for rounds)
+            // Check if the game is in the voting phase
+            if (lobbyData.phase !== GamePhase.VOTING) {
+                throw new Error("Voting is not currently allowed - not in voting phase");
+            }
+
+            // Store the vote in the database
             await dbInstance.run(
                 "INSERT INTO votes (lobby_id, voter, target) VALUES (?, ?, ?)",
                 [lobbyId, username, vote]
             );
 
-            // For simplicity, let's just acknowledge the vote
+            // Notify other players about the vote
             socket.emit("vote-submitted", { username, vote });
+            socket.to(lobbyId).emit("player-voted", { username });
 
-            // You'd typically have logic here to check if all players have voted
-            // and then proceed to tally the votes and potentially eliminate a player
-            // or end the game.
+            // Check if all players have voted
             const allPlayers = lobbyData.players.length;
             const votesCast = await dbInstance.all(
                 "SELECT * FROM votes WHERE lobby_id = ?",
                 [lobbyId]
             );
 
-            if (votesCast.length === allPlayers) {
-                const votesByTarget: Record<string, number> = {};
+            // If all votes are in, tally the votes and determine the outcome
+            if (votesCast.length >= allPlayers) {
+                // Compile all votes into a single object for calculation
+                const votesMap: Record<string, string> = {};
                 for (const v of votesCast) {
-                    votesByTarget[v.target] = (votesByTarget[v.target] || 0) + 1;
+                    votesMap[v.voter] = v.target;
                 }
 
-                let eliminatedPlayer: string | null = null;
-                let maxVotes = 0;
-                for (const player in votesByTarget) {
-                    if (votesByTarget[player] > maxVotes) {
-                        maxVotes = votesByTarget[player];
-                        eliminatedPlayer = player;
-                    } else if (votesByTarget[player] === maxVotes && maxVotes > 0) {
-                        eliminatedPlayer = null; // Tie, no one eliminated
-                    }
-                }
+                // Calculate game results
+                await calculateWinConditions(lobbyId, votesMap);
 
-                if (eliminatedPlayer) {
-                    await dbInstance.run(
-                        "UPDATE players SET eliminated = 1 WHERE username = ? AND lobby_id = ?",
-                        [eliminatedPlayer, lobbyId]
-                    );
-                    io.to(lobbyId).emit("player-eliminated", { player: eliminatedPlayer });
-                } else {
-                    io.to(lobbyId).emit("no-player-eliminated");
-                }
+                // Update lobby phase to COMPLETED
+                lobbyData.phase = GamePhase.COMPLETED;
+                lobbyData.status = "completed";
+                
+                await dbInstance.run(
+                    "UPDATE lobbies SET status = ?, phase = ? WHERE id = ?",
+                    ["completed", GamePhase.COMPLETED, lobbyId]
+                );
 
-                // After voting, you'd usually check for win conditions
-                const currentVotes = {}; // In a real game, you'd collect votes for the current round
-                await calculateWinConditions(lobbyId, currentVotes);
+                // Get final results to send to clients
+                const finalResults = await dbInstance.all(
+                    "SELECT username, team, operation, win_status FROM players WHERE lobby_id = ?",
+                    [lobbyId]
+                );
 
-                // Clear votes for the next round (in a multi-round game)
+                // Notify all players of the game completion
+                io.to(lobbyId).emit("phase-change", {
+                    phase: GamePhase.COMPLETED,
+                    message: "Game completed. Results available!"
+                });
+
+                // Send game results to all players
+                io.to(lobbyId).emit("game-results", {
+                    results: finalResults,
+                    phase: GamePhase.COMPLETED
+                });
+
+                // Clear votes for a potential next game
                 await dbInstance.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
             }
 
         } catch (error) {
-            console.error("Fehler beim Abgeben der Stimme:", error);
-            socket.emit("error", error instanceof Error ? error.message : "Unknown error");
+            console.error("Error processing vote:", error);
+            socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
         }
     });
 
@@ -696,31 +793,45 @@ io.on("connection", (socket: Socket) => {
         }
     });
 
-    socket.on("get-lobby-players", async ({ lobbyCode }) => {
+    socket.on("get-lobby-players", async ({ lobbyCode }, callback) => {
         try {
             const dbInstance = getDB();
-            const lobbyEntry = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
+            const lobby = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
 
-            if (!lobbyEntry) {
-                throw new Error("Lobby does not exist");
+            if (!lobby) {
+                if (callback) {
+                    callback({ 
+                        success: false, 
+                        error: "Lobby does not exist" 
+                    });
+                }
+                return;
             }
-            const [lobbyId, lobbyData] = lobbyEntry;
-            const playersInLobby = await dbInstance.all(
-                "SELECT username FROM players WHERE lobby_id = ?",
-                [lobbyId]
-            );
-            socket.emit("lobby-players", { players: playersInLobby.map(p => ({ username: p.username })) });
+
+            const [lobbyId, lobbyData] = lobby;
+            
+            if (callback) {
+                callback({ 
+                    success: true,
+                    players: lobbyData.players.map(username => ({ username }))
+                });
+            }
         } catch (error) {
             console.error("Error retrieving lobby players:", error);
-            socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
+            if (callback) {
+                callback({ 
+                    success: false, 
+                    error: error instanceof Error ? error.message : "Unknown error" 
+                });
+            }
         }
     });
 });
 
-export const startServer = async (port: number = 3000) => {
+export const startServer = async (port: number = 5001) => {
   await initializeDatabase();
   return new Promise<void>((resolve) => {
-    const portNumber = typeof port === 'number' ? port : 3000;
+    const portNumber = typeof port === 'number' ? port : 5001;
     server.listen(portNumber, () => {
       console.log(`Server running on port ${portNumber}`);
       resolve();

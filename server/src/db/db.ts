@@ -24,7 +24,10 @@ export const initDB = async (useMemory = false) => {
             CREATE TABLE IF NOT EXISTS lobbies (
                 id TEXT PRIMARY KEY,
                 lobby_code TEXT UNIQUE,
-                status TEXT CHECK(status IN ('waiting', 'playing', 'completed'))
+                status TEXT CHECK(status IN ('waiting', 'playing', 'completed')),
+                phase TEXT CHECK(phase IN ('waiting', 'team_assignment', 'operation_assignment', 'voting', 'completed')),
+                round INTEGER DEFAULT 1,
+                total_rounds INTEGER DEFAULT 1
             )
         `);
 

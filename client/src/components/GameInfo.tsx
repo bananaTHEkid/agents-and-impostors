@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Badge } from 'react-bootstrap';
+import { Card, Badge, Alert } from 'react-bootstrap';
 import { useSocket } from '../contexts/SocketContext';
+import { GamePhase } from '../types';
 
 interface OperationInfo {
   targetPlayer?: string;
@@ -11,11 +12,17 @@ interface OperationInfo {
   secretCode?: number;
 }
 
-const GameInfo: React.FC = () => {
+interface GameInfoProps {
+  className?: string;
+}
+
+const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
   const { socket } = useSocket();
   const [operation, setOperation] = useState<string | null>(null);
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
   const [team, setTeam] = useState<string | null>(null);
+  const [phase, setPhase] = useState<GamePhase>(GamePhase.WAITING);
+  const [showTeamReveal, setShowTeamReveal] = useState(false);
   const username = sessionStorage.getItem('username');
 
   useEffect(() => {
@@ -26,17 +33,42 @@ const GameInfo: React.FC = () => {
       });
 
       socket.on('team-assignment', (data) => {
-        // Determine the player's team from the data
-        if (data.impostors && data.impostors.includes(username)) {
-          setTeam('impostor');
-        } else if (data.agents && data.agents.includes(username)) {
-          setTeam('agent');
+        // Start team reveal animation
+        setShowTeamReveal(true);
+        
+        // Determine the player's team from the data after a short delay for animation
+        setTimeout(() => {
+          if (data.impostors && data.impostors.includes(username)) {
+            setTeam('impostor');
+          } else if (data.agents && data.agents.includes(username)) {
+            setTeam('agent');
+          }
+          
+          if (data.phase) {
+            setPhase(data.phase);
+          }
+        }, 2000); // 2-second delay for dramatic effect
+      });
+      
+      socket.on('phase-change', (data) => {
+        setPhase(data.phase);
+        // If we're past team assignment, ensure team is visible
+        if (data.phase !== GamePhase.TEAM_ASSIGNMENT) {
+          setShowTeamReveal(false);
+        }
+      });
+
+      socket.on('game-state', (data) => {
+        if (data.phase) {
+          setPhase(data.phase);
         }
       });
 
       return () => {
         socket.off('operation-prepared');
         socket.off('team-assignment');
+        socket.off('phase-change');
+        socket.off('game-state');
       };
     }
   }, [socket, username]);
@@ -46,26 +78,78 @@ const GameInfo: React.FC = () => {
     return team === 'impostor' ? 'danger' : 'success';
   };
 
+  const getPhaseLabel = () => {
+    switch (phase) {
+      case GamePhase.WAITING:
+        return 'Waiting for Game to Start';
+      case GamePhase.TEAM_ASSIGNMENT:
+        return 'Team Assignment Phase';
+      case GamePhase.OPERATION_ASSIGNMENT:
+        return 'Operation Assignment Phase';
+      case GamePhase.VOTING:
+        return 'Voting Phase';
+      case GamePhase.COMPLETED:
+        return 'Game Completed';
+      default:
+        return 'Unknown Phase';
+    }
+  };
+
+  // Only show team and operation info after they're assigned
+  const showTeamInfo = phase !== GamePhase.WAITING && team && !showTeamReveal;
+  const showOperationInfo = operation && (phase === GamePhase.VOTING || phase === GamePhase.COMPLETED);
+
+  // Team reveal component
+  const renderTeamReveal = () => {
+    if (!showTeamReveal || phase !== GamePhase.TEAM_ASSIGNMENT) return null;
+    
+    return (
+      <div className="team-reveal-animation">
+        <div className="text-center mb-4">
+          <div className="spinner-grow" role="status">
+            <span className="visually-hidden">Assigning team...</span>
+          </div>
+          <h5 className="mt-3">Assigning your team...</h5>
+          <div className="card-flip my-4">
+            <div className="card-inner">
+              <div className="card-front bg-secondary text-white p-4 rounded">
+                <h3>?</h3>
+                <p>Your Team</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <Card className="mb-4">
-      <Card.Header>
+    <Card className={`mb-4 ${className || ''}`}>
+      <Card.Header className="d-flex justify-content-between align-items-center">
         <h5>Your Role</h5>
+        <Badge bg="info">{getPhaseLabel()}</Badge>
       </Card.Header>
       <Card.Body>
-        {team && (
-          <div className="mb-3">
-            <h6>Team: <Badge bg={getTeamColor()}>{team}</Badge></h6>
-            <p className="small">
-              {team === 'impostor' 
-                ? 'Your goal is to remain undetected and make the agents vote incorrectly.' 
-                : 'Your goal is to identify and vote out the impostors.'}
-            </p>
+        {renderTeamReveal()}
+
+        {showTeamInfo && (
+          <div className="mb-3 team-info-container">
+            <Alert variant={team === 'impostor' ? 'danger' : 'success'} className="text-center">
+              <h4 className="alert-heading">You are an {team === 'impostor' ? 'IMPOSTOR' : 'AGENT'}!</h4>
+              <hr />
+              <h6>Team: <Badge bg={getTeamColor()}>{team}</Badge></h6>
+              <p className="small mb-0">
+                {team === 'impostor' 
+                  ? 'Your goal is to remain undetected and make the agents vote incorrectly.' 
+                  : 'Your goal is to identify and vote out the impostors.'}
+              </p>
+            </Alert>
           </div>
         )}
 
-        <div>
-          <h6>Operation: {operation || 'Waiting for assignment...'}</h6>
-          {operation && (
+        {showOperationInfo && (
+          <div>
+            <h6>Operation: {operation}</h6>
             <div className="operation-details">
               {/* Special operation details */}
               {operation === 'grudge' && (
@@ -95,9 +179,16 @@ const GameInfo: React.FC = () => {
               {operation === 'old photographs' && (
                 <p>You possess old photographs that reveal information.</p>
               )}
+              {operation === 'scapegoat' && (
+                <p>You win if you are eliminated.</p>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+        
+        {!showTeamInfo && !showOperationInfo && !showTeamReveal && (
+          <p>Waiting for role assignment...</p>
+        )}
       </Card.Body>
     </Card>
   );

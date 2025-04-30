@@ -20,7 +20,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     // Only create a new socket if one doesn't exist
     if (!socketInstance) {
-      socketInstance = io("http://localhost:5000", {
+      socketInstance = io("http://localhost:5001", {
         transports: ['websocket'],
         upgrade: false,
         forceNew: false,

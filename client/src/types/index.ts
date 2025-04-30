@@ -1,3 +1,11 @@
+export enum GamePhase {
+  WAITING = 'waiting',
+  TEAM_ASSIGNMENT = 'team_assignment',
+  OPERATION_ASSIGNMENT = 'operation_assignment',
+  VOTING = 'voting',
+  COMPLETED = 'completed'
+}
+
 export interface LandingPageProps {
   onJoinGame: (code: string) => void;
 }
@@ -17,15 +25,22 @@ export interface Player {
   username: string;
   team?: string;
   operation?: string;
+  eliminated?: boolean;
+  win_status?: string;
   isHost?: boolean;
-  score?: number;
 }
 
 export interface GameState {
-  currentState: 'waiting' | 'playing' | 'voting' | 'completed';
-  round: number;
-  totalRounds: number;
-  currentPlayer?: string;
+  currentState?: string;
+  phase?: GamePhase;
+  round?: number;
+  totalRounds?: number;
   submittedPlayers?: string[];
   votedPlayers?: string[];
+  results?: Array<{
+    username: string;
+    team: string;
+    operation: string;
+    win_status: string;
+  }>;
 } 
