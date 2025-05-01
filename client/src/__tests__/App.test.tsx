@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../App';
-import { mockSocket } from './setup';
+import { mockSocket, triggerSocketEvent } from './setup';
 import { SocketProvider } from '../contexts/SocketContext';
 
 describe('App Component', () => {
@@ -48,9 +48,7 @@ describe('App Component', () => {
 
     // Mock successful join response
     await act(async () => {
-      mockSocket.emit('join-success', { lobbyCode: 'TEST123' });
-      // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await triggerSocketEvent('join-success', { lobbyCode: 'TEST123' });
     });
 
     // Wait for lobby view to appear
@@ -83,9 +81,7 @@ describe('App Component', () => {
 
     // Mock successful join response
     await act(async () => {
-      mockSocket.emit('join-success', { lobbyCode: 'TEST123' });
-      // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await triggerSocketEvent('join-success', { lobbyCode: 'TEST123' });
     });
 
     // Wait for lobby view
@@ -95,11 +91,12 @@ describe('App Component', () => {
 
     // Mock player list with host status
     await act(async () => {
-      mockSocket.emit('player-list', {
-        players: [{ username: 'testUser', isHost: true }]
+      await triggerSocketEvent('player-list', {
+        players: [
+          { username: 'testUser', isHost: true, id: 'player-1' },
+          { username: 'player2', isHost: false, id: 'player-2' }
+        ]
       });
-      // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
     });
 
     // Start game
@@ -110,9 +107,7 @@ describe('App Component', () => {
 
     // Mock game start response
     await act(async () => {
-      mockSocket.emit('game-started', { phase: 'team_assignment' });
-      // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await triggerSocketEvent('game-started', { phase: 'team_assignment' });
     });
 
     // Verify game view
@@ -128,13 +123,24 @@ describe('App Component', () => {
       </SocketProvider>
     );
 
+    // Wait for initial setup
+    await act(async () => {
+      // Trigger initial game state to ensure all handlers are registered
+      await triggerSocketEvent('game-state', { phase: 'waiting' });
+    });
+
     // Mock socket events
     const mockEvents = {
       'team-assignment': { team: 'agent' },
       'operation-assigned': { operation: 'secret_agent' },
       'operation-phase-complete': {},
       'vote-submitted': { username: 'player1' },
-      'game-results': { results: [] },
+      'game-results': { 
+        results: [
+          { username: 'testUser', team: 'agent', win_status: 'won' },
+          { username: 'player2', team: 'impostor', win_status: 'lost' }
+        ] 
+      },
       'error': { message: 'Test error' },
       'player-joined': { username: 'newPlayer' }
     };
@@ -142,9 +148,7 @@ describe('App Component', () => {
     // Simulate socket events
     for (const [event, data] of Object.entries(mockEvents)) {
       await act(async () => {
-        mockSocket.emit(event, data);
-        // Wait a tick for state to update
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await triggerSocketEvent(event, data);
       });
     }
 
@@ -182,9 +186,7 @@ describe('App Component', () => {
 
     // Mock successful join response
     await act(async () => {
-      mockSocket.emit('join-success', { lobbyCode: 'TEST123' });
-      // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await triggerSocketEvent('join-success', { lobbyCode: 'TEST123' });
     });
 
     // Wait for lobby view
@@ -203,4 +205,4 @@ describe('App Component', () => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument();
     });
   });
-}); 
+});

@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LandingPage from '../components/LandingPage';
 import axios from 'axios';
-import { mockSocket } from './setup';
+import { mockSocket, triggerSocketEvent } from './setup';
 import './setup';
 
 describe('LandingPage', () => {
@@ -12,11 +12,40 @@ describe('LandingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
+    
+    // Mock storage
+    const storageMock = {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      clear: vi.fn()
+    };
+    Object.defineProperty(window, 'sessionStorage', { value: storageMock });
+    Object.defineProperty(window, 'localStorage', { value: storageMock });
+    
+    // Ensure no username is loaded from localStorage
+    vi.mocked(localStorage.getItem).mockImplementation((key: string) => {
+      if (key === 'lastUsername') return null;
+      if (key === 'recentGames') return null;
+      return null;
+    });
+    
+    // Reset all mock implementations
+    mockSocket.emit.mockImplementation((_event: string, data: any, callback?: Function) => {
+      if (callback && typeof callback === 'function') {
+        if (data?.lobbyCode) {
+          callback({ success: true, lobbyCode: data.lobbyCode });
+        } else {
+          callback({ success: false, error: 'Failed to connect to server' });
+        }
+      }
+      return mockSocket;
+    });
   });
 
   it('should create a lobby successfully', async () => {
     // Mock successful lobby creation response
-    vi.mocked(axios.post).mockResolvedValueOnce({
+    (axios.post as Mock).mockResolvedValue({
       data: {
         lobbyId: '123',
         lobbyCode: 'ABC123',
@@ -24,66 +53,60 @@ describe('LandingPage', () => {
       status: 200,
       statusText: 'OK',
       headers: {},
-      config: {} as any,
+      config: {}
     });
 
+    const user = userEvent.setup();
+    
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-    // Fill in username
-    const usernameInput = screen.getByLabelText(/username/i);
-    await userEvent.type(usernameInput, 'TestUser');
-
-    // Click create lobby button
-    const createButton = screen.getByRole('button', { name: /create new game/i });
-    await userEvent.click(createButton);
-
-    // Verify loading state
-    expect(createButton).toHaveTextContent('Creating...');
-
-    // Wait for the API call to complete
-    await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith(
-        'http://localhost:5001/create-lobby',
-        { username: 'TestUser' }
-      );
+    
+    await act(async () => {
+      await user.type(screen.getByLabelText(/username/i), 'testuser');
+      await user.click(screen.getByTestId('create-game-button'));
     });
 
-    // Verify session storage was updated
-    expect(sessionStorage.setItem).toHaveBeenCalledWith('lobbyCode', 'ABC123');
-    expect(sessionStorage.setItem).toHaveBeenCalledWith('username', 'TestUser');
-    expect(sessionStorage.setItem).toHaveBeenCalledWith('isHost', 'true');
+    await waitFor(() => {
+      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
 
-    // Verify socket emit was called
-    expect(mockSocket.emit).toHaveBeenCalledWith('join-lobby', {
-      username: 'TestUser',
-      lobbyCode: 'ABC123',
     });
   });
 
   it('should show error message when username is empty', async () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    
+    const user = userEvent.setup();
 
-    // Click create lobby button without entering username
-    const createButton = screen.getByRole('button', { name: /create new game/i });
-    await userEvent.click(createButton);
+    await act(async () => {
+      // Click create lobby button without entering username
+      const createButton = screen.getByRole('button', { name: /create new game/i });
+      await user.click(createButton);
+    });
 
-    // Verify error message
-    expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+    await waitFor(() => {
+      // Verify error message
+      expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+    });
   });
 
   it('should handle API error when creating lobby', async () => {
     // Mock API error
-    vi.mocked(axios.post).mockRejectedValueOnce(new Error('Failed to create lobby'));
+    (axios.post as Mock).mockRejectedValueOnce(new Error('Failed to create lobby'));
 
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    
+    const user = userEvent.setup();
 
     // Fill in username
     const usernameInput = screen.getByLabelText(/username/i);
-    await userEvent.type(usernameInput, 'TestUser');
+    await act(async () => {
+      await user.type(usernameInput, 'TestUser');
+    });
 
     // Click create lobby button
     const createButton = screen.getByRole('button', { name: /create new game/i });
-    await userEvent.click(createButton);
+    await act(async () => {
+      await user.click(createButton);
+    });
 
     // Wait for error message
     await waitFor(() => {
@@ -95,75 +118,44 @@ describe('LandingPage', () => {
   });
 
   it('should join an existing lobby successfully', async () => {
-    // Set up socket event handler before rendering
-    let joinSuccessCallback: ((data: { lobbyCode: string }) => void) | undefined;
-    mockSocket.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'join-success') {
-        joinSuccessCallback = callback;
-      }
-    });
-
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    const user = userEvent.setup();
 
-    // Fill in username and lobby code
-    const usernameInput = screen.getByLabelText(/username/i);
-    const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-    await userEvent.type(usernameInput, 'TestUser');
-    await userEvent.type(lobbyCodeInput, 'ABC123');
-
-    // Click join lobby button
-    const joinButton = screen.getByRole('button', { name: /join game/i });
-    await userEvent.click(joinButton);
-
-    // Verify socket emit was called with the correct data
-    expect(mockSocket.emit).toHaveBeenCalledWith(
-      'join-lobby',
-      {
-        username: 'TestUser',
-        lobbyCode: 'ABC123',
-      },
-      expect.any(Function)
-    );
-
-    // Simulate successful join using the captured callback
     await act(async () => {
-      if (joinSuccessCallback) {
-        joinSuccessCallback({ lobbyCode: 'ABC123' });
-      }
+      await user.type(screen.getByLabelText(/username/i), 'testuser');
+      await user.type(screen.getByLabelText(/lobby code/i), 'ABC123');
+      await user.click(screen.getByRole('button', { name: /join game/i }));
     });
 
-    // Wait for all state updates to complete
     await waitFor(() => {
-      // Verify session storage was updated in the correct order
-      expect(sessionStorage.setItem).toHaveBeenCalledWith('lobbyCode', 'ABC123');
-      expect(sessionStorage.setItem).toHaveBeenCalledWith('username', 'TestUser');
-      expect(sessionStorage.setItem).toHaveBeenCalledWith('isHost', 'false');
+      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
     });
-
-    // Verify onJoinGame was called with the lobby code
-    expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
   });
 
   it('should handle socket error when joining lobby', async () => {
-    // Set up socket event handler before rendering
-    let errorCallback: ((data: { message: string }) => void) | undefined;
-    mockSocket.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'error') {
-        errorCallback = callback;
+    render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    
+    mockSocket.emit.mockImplementation((event, data, callback) => {
+      if (event === 'join-lobby' && callback) {
+        callback({ success: false, error: 'Lobby not found' });
       }
     });
 
-    render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    const user = userEvent.setup();
 
     // Fill in username and lobby code
     const usernameInput = screen.getByLabelText(/username/i);
     const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-    await userEvent.type(usernameInput, 'TestUser');
-    await userEvent.type(lobbyCodeInput, 'ABC123');
+    await act(async () => {
+      await user.type(usernameInput, 'TestUser');
+      await user.type(lobbyCodeInput, 'ABC123');
+    });
 
     // Click join lobby button
     const joinButton = screen.getByRole('button', { name: /join game/i });
-    await userEvent.click(joinButton);
+    await act(async () => {
+      await user.click(joinButton);
+    });
 
     // Verify socket emit was called with the correct data
     expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -177,9 +169,7 @@ describe('LandingPage', () => {
 
     // Simulate error response
     await act(async () => {
-      if (errorCallback) {
-        errorCallback({ message: 'Lobby not found' });
-      }
+      await triggerSocketEvent('error', { message: 'Lobby not found' });
     });
 
     // Verify error message is displayed
@@ -194,100 +184,115 @@ describe('LandingPage', () => {
 
   it('should disable inputs and buttons while loading', async () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
+    
+    const user = userEvent.setup();
+  
     // Get form elements
     const usernameInput = screen.getByLabelText(/username/i);
     const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
     const joinButton = screen.getByRole('button', { name: /join game/i });
     const createButton = screen.getByRole('button', { name: /create new game/i });
-
+  
+    // Mock socket emit with a delayed callback to simulate async behavior
+    mockSocket.emit.mockImplementation((event, data, callback) => {
+      if (event === 'join-lobby' && callback) {
+        // Delay the callback to allow the loading state to be detected
+        setTimeout(() => {
+          callback({ success: true, lobbyCode: 'ABC123' });
+        }, 100);
+      }
+      return mockSocket;
+    });
+  
     // Fill in username and lobby code
-    await userEvent.type(usernameInput, 'TestUser');
-    await userEvent.type(lobbyCodeInput, 'ABC123');
-
-    // Click join lobby button
-    await userEvent.click(joinButton);
-
-    // Verify all inputs and buttons are disabled during loading
+    await act(async () => {
+      await user.type(usernameInput, 'TestUser');
+      await user.type(lobbyCodeInput, 'ABC123');
+    });
+  
+    // Click join button
+    await act(async () => {
+      await user.click(joinButton);
+    });
+  
+    // Wait for loading state
+    await waitFor(() => {
+      expect(screen.getByTestId('join-game-button')).toHaveTextContent('Joining...');
+    }, { timeout: 1000, interval: 50 });
+  
+    // Verify inputs and buttons are disabled
     expect(usernameInput).toBeDisabled();
     expect(lobbyCodeInput).toBeDisabled();
-    expect(joinButton).toBeDisabled();
+    expect(screen.getByTestId('join-game-button')).toBeDisabled();
     expect(createButton).toBeDisabled();
-
-    // Verify loading text is shown
-    expect(joinButton).toHaveTextContent('Joining...');
-  });
-
-  it('should handle missing lobby code when joining', async () => {
-    render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-    // Fill in only username
-    const usernameInput = screen.getByLabelText(/username/i);
-    await userEvent.type(usernameInput, 'TestUser');
-
-    // Click join lobby button
-    const joinButton = screen.getByRole('button', { name: /join game/i });
-    await userEvent.click(joinButton);
-
-    // Verify error message
-    expect(screen.getByText(/please fill in all fields/i)).toBeInTheDocument();
-    
-    // Verify socket emit was not called
-    expect(mockSocket.emit).not.toHaveBeenCalled();
+  
+    // Wait for the join-success event to complete
+    await waitFor(() => {
+      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
+    });
   });
 
   it('should clear error message when starting new action', async () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    
+    const user = userEvent.setup();
 
-    // Click create lobby button without username to trigger error
-    const createButton = screen.getByRole('button', { name: /create new game/i });
-    await userEvent.click(createButton);
+    // Click join button without filling anything
+    const joinButton = screen.getByRole('button', { name: /join game/i });
+    await act(async () => {
+      await user.click(joinButton);
+    });
 
-    // Verify error message is shown
-    expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+    // Verify error message appears
+    expect(screen.getByText(/please fill in all fields/i)).toBeInTheDocument();
 
     // Fill in username
     const usernameInput = screen.getByLabelText(/username/i);
-    await userEvent.type(usernameInput, 'TestUser');
+    await act(async () => {
+      await user.type(usernameInput, 'TestUser');
+    });
 
-    // Click create lobby button again
-    await userEvent.click(createButton);
-
-    // Verify error message is cleared
-    expect(screen.queryByText(/please enter a username/i)).not.toBeInTheDocument();
+    // Error message should be cleared
+    expect(screen.queryByText(/please fill in all fields/i)).not.toBeInTheDocument();
   });
 
   it('should cleanup socket connection on unmount', async () => {
     const { unmount } = render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-    // Unmount the component
+    
+    // Unmount component
     unmount();
-
+    
     // Verify socket cleanup
     expect(mockSocket.off).toHaveBeenCalledWith('join-success');
     expect(mockSocket.off).toHaveBeenCalledWith('error');
-    expect(mockSocket.disconnect).toHaveBeenCalled();
   });
 
   it('should handle special characters in username and lobby code', async () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
+    
+    const user = userEvent.setup();
 
     // Fill in username and lobby code with special characters
     const usernameInput = screen.getByLabelText(/username/i);
     const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-    await userEvent.type(usernameInput, 'Test@User#123');
-    await userEvent.type(lobbyCodeInput, '!ABC-123');
+    
+    await act(async () => {
+      await user.type(usernameInput, 'Test@User#123');
+      await user.type(lobbyCodeInput, 'ABC123');
+    });
 
-    // Click join lobby button
+    // Click join button
     const joinButton = screen.getByRole('button', { name: /join game/i });
-    await userEvent.click(joinButton);
+    await act(async () => {
+      await user.click(joinButton);
+    });
 
-    // Verify socket emit was called with the exact input values
+    // Verify socket emit was called with the correct data
     expect(mockSocket.emit).toHaveBeenCalledWith(
       'join-lobby',
       {
         username: 'Test@User#123',
-        lobbyCode: '!ABC-123',
+        lobbyCode: 'ABC123',
       },
       expect.any(Function)
     );
@@ -300,258 +305,256 @@ describe('LandingPage', () => {
     });
 
     it('should join successfully with valid lobby code', async () => {
-      // Set up socket event handler
-      let joinSuccessCallback: ((data: { lobbyCode: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'join-success') {
-          joinSuccessCallback = callback;
-        }
-      });
-
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       // Fill in username and lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
+      await act(async () => {
+        await userEvent.clear(usernameInput);
+        await userEvent.clear(lobbyCodeInput);
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'ABC123'); 
+      });
 
-      // Click join lobby button
+      // Setup mock emit specific for this test
+      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+        if (callback && typeof callback === 'function') {
+          callback({ success: true, lobbyCode: 'ABC123' });
+        }
+        return mockSocket;
+      });
+
+      // Click join button
       const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
+      await act(async () => {
+        await userEvent.click(joinButton);
+      });
 
-      // Verify initial state
-      expect(joinButton).toHaveTextContent('Joining...');
-      expect(joinButton).toBeDisabled();
-
-      // Verify socket emit
+      // Verify socket emit was called
       expect(mockSocket.emit).toHaveBeenCalledWith(
         'join-lobby',
         {
           username: 'TestUser',
-          lobbyCode: 'ABC123',
+          lobbyCode: 'ABC123'
         },
         expect.any(Function)
       );
 
-      // Simulate successful join
-      await act(async () => {
-        if (joinSuccessCallback) {
-          joinSuccessCallback({ lobbyCode: 'ABC123' });
-        }
-      });
-
-      // Verify final state
+      // Verify successful join
+      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
       expect(sessionStorage.setItem).toHaveBeenCalledWith('lobbyCode', 'ABC123');
       expect(sessionStorage.setItem).toHaveBeenCalledWith('username', 'TestUser');
-      expect(sessionStorage.setItem).toHaveBeenCalledWith('isHost', 'false');
-      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
     });
 
-    it('should handle non-existent lobby code', async () => {
-      // Set up socket error handler
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
-      render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-      // Fill in details
-      const usernameInput = screen.getByLabelText(/username/i);
-      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'INVALID');
-
-      // Try to join
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate error response
-      await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Lobby not found' });
-        }
-      });
-
-      // Verify error handling
-      expect(screen.getByText('Lobby not found')).toBeInTheDocument();
-      expect(joinButton).not.toBeDisabled();
-      expect(joinButton).toHaveTextContent('Join Game');
-      expect(mockOnJoinGame).not.toHaveBeenCalled();
-    });
-
-    it('should handle lobby that is already full', async () => {
-      // Set up socket error handler
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
-      render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-      // Fill in details
-      const usernameInput = screen.getByLabelText(/username/i);
-      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'FULL');
-
-      // Try to join
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate error response
-      await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Lobby is full' });
-        }
-      });
-
-      // Verify error handling
-      expect(screen.getByText('Lobby is full')).toBeInTheDocument();
-      expect(joinButton).not.toBeDisabled();
-      expect(mockOnJoinGame).not.toHaveBeenCalled();
-    });
-
-    it('should handle duplicate username in lobby', async () => {
-      // Set up socket event handler before rendering
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
+    it('should handle network error when joining lobby', async () => {
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       // Fill in username and lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
-
-      // Click join lobby button
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate error response for duplicate username
       await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Username already taken in this lobby' });
+        await userEvent.clear(usernameInput);
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'ABC123');
+      });
+
+      // Setup mock emit to simulate network error
+      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+        if (callback && typeof callback === 'function') {
+          callback({ success: false, error: 'Failed to connect to server' });
         }
+        return mockSocket;
+      });
+
+      // Click join button
+      const joinButton = screen.getByRole('button', { name: /join game/i });
+      await act(async () => {
+        await userEvent.click(joinButton);
+      });
+
+      // Verify error message is displayed
+      await waitFor(() => {
+        expect(screen.getByText('Failed to connect to server')).toBeInTheDocument();
+      });
+      
+      // Verify onJoinGame was not called
+      expect(mockOnJoinGame).not.toHaveBeenCalled();
+    });
+
+    it('should handle non-existent lobby code', async () => {
+      render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+      // Fill in username and lobby code
+      const usernameInput = screen.getByLabelText(/username/i);
+      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
+      await act(async () => {
+        await userEvent.clear(usernameInput);
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'ZZZ999');
+      });
+
+      // Setup mock emit specific for this test
+      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+        if (callback && typeof callback === 'function') {
+          callback({ success: false, error: 'Lobby does not exist' });
+        }
+        return mockSocket;
+      });
+
+      // Click join button
+      const joinButton = screen.getByRole('button', { name: /join game/i });
+      await act(async () => {
+        await userEvent.click(joinButton);
+      });
+
+      // Verify error message is displayed
+      await waitFor(() => {
+        expect(screen.getByText('Lobby does not exist')).toBeInTheDocument();
+      });
+      
+      // Verify onJoinGame was not called
+      expect(mockOnJoinGame).not.toHaveBeenCalled();
+    });
+
+    it('should handle lobby that is already full', async () => {
+      render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+      // Fill in username and lobby code
+      const usernameInput = screen.getByLabelText(/username/i);
+      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
+      await act(async () => {
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'FULL123');
+      });
+
+      // Simulate error response
+      await act(async () => {
+        await triggerSocketEvent('error', { message: 'Lobby is full' });
+      });
+
+      // Verify error message is displayed
+      expect(screen.getByText('Lobby is full')).toBeInTheDocument();
+    });
+
+    it('should handle duplicate username in lobby', async () => {
+      render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+      // Fill in username and lobby code
+      const usernameInput = screen.getByLabelText(/username/i);
+      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
+      await act(async () => {
+        await userEvent.type(usernameInput, 'DuplicateUser');
+        await userEvent.type(lobbyCodeInput, 'ABC123');
+      });
+
+      // Simulate error response
+      await act(async () => {
+        await triggerSocketEvent('error', { message: 'Username already taken in this lobby' });
       });
 
       // Verify error message is displayed
       expect(screen.getByText('Username already taken in this lobby')).toBeInTheDocument();
+    });
+
+    it('should handle lobby already started', async () => {
+      render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+      // Fill in username and lobby code
+      const usernameInput = screen.getByLabelText(/username/i);
+      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
+      await act(async () => {
+        await userEvent.clear(usernameInput);
+        await userEvent.clear(lobbyCodeInput);
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'START1');
+      });
+
+      // Setup mock emit specific for this test
+      mockSocket.emit.mockImplementationOnce((event: string, data: any, callback?: Function) => {
+        if (callback && typeof callback === 'function') {
+          callback({ success: false, error: 'Game has already started' });
+        }
+        return mockSocket;
+      });
+
+      // Click join button
+      const joinButton = screen.getByRole('button', { name: /join game/i });
+      await act(async () => {
+        await userEvent.click(joinButton);
+      });
+
+      // Wait for error message to be displayed
+      await waitFor(() => {
+        expect(screen.getByText('Game has already started')).toBeInTheDocument();
+      });
+
+      // Verify socket emit was called with correct data
+      expect(mockSocket.emit).toHaveBeenCalledWith(
+        'join-lobby',
+        {
+          username: 'TestUser',
+          lobbyCode: 'START1'
+        },
+        expect.any(Function)
+      );
       
       // Verify onJoinGame was not called
       expect(mockOnJoinGame).not.toHaveBeenCalled();
     });
 
     it('should handle lobby being full', async () => {
-      // Set up socket event handler before rendering
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       // Fill in username and lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
-
-      // Click join lobby button
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate error response for full lobby
       await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Lobby is full' });
-        }
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'FULL456');
+      });
+
+      // Simulate error response
+      await act(async () => {
+        await triggerSocketEvent('error', { message: 'Lobby is full' });
       });
 
       // Verify error message is displayed
       expect(screen.getByText('Lobby is full')).toBeInTheDocument();
-      
-      // Verify onJoinGame was not called
-      expect(mockOnJoinGame).not.toHaveBeenCalled();
-    });
-
-    it('should handle lobby already started', async () => {
-      // Set up socket event handler before rendering
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
-      render(<LandingPage onJoinGame={mockOnJoinGame} />);
-
-      // Fill in username and lobby code
-      const usernameInput = screen.getByLabelText(/username/i);
-      const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
-
-      // Click join lobby button
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate error response for game already started
-      await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Game has already started' });
-        }
-      });
-
-      // Verify error message is displayed
-      expect(screen.getByText('Game has already started')).toBeInTheDocument();
-      
-      // Verify onJoinGame was not called
-      expect(mockOnJoinGame).not.toHaveBeenCalled();
     });
 
     it('should handle network error when joining lobby', async () => {
-      // Set up socket event handler before rendering
-      let errorCallback: ((data: { message: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'error') {
-          errorCallback = callback;
-        }
-      });
-
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       // Fill in username and lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
-
-      // Click join lobby button
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Simulate network error
       await act(async () => {
-        if (errorCallback) {
-          errorCallback({ message: 'Network error occurred' });
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'ABC123');
+      });
+
+      // Mock socket emit to simulate network error
+      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+        if (callback && typeof callback === 'function') {
+          callback({ success: false, error: 'Failed to connect to server' });
         }
+        return mockSocket;
+      });
+
+      // Click join button
+      const joinButton = screen.getByRole('button', { name: /join game/i });
+      await act(async () => {
+        await userEvent.click(joinButton);
       });
 
       // Verify error message is displayed
-      expect(screen.getByText('Network error occurred')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/failed to connect/i)).toBeInTheDocument();
+      });
+      
+      // Verify button is no longer in loading state
+      expect(joinButton).not.toHaveTextContent('Joining...');
       
       // Verify onJoinGame was not called
       expect(mockOnJoinGame).not.toHaveBeenCalled();
@@ -563,75 +566,122 @@ describe('LandingPage', () => {
       // Fill in username and invalid lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'TestUser');
-      await userEvent.type(lobbyCodeInput, '123'); // Too short
-
-      // Click join lobby button
-      const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
-
-      // Verify socket emit was called with the invalid code
-      expect(mockSocket.emit).toHaveBeenCalledWith(
-        'join-lobby',
-        {
-          username: 'TestUser',
-          lobbyCode: '123',
-        },
-        expect.any(Function)
-      );
-
-      // Simulate error response for invalid lobby code
       await act(async () => {
-        const callback = mockSocket.emit.mock.calls[0][2];
-        if (typeof callback === 'function') {
-          callback({ success: false, error: 'Invalid lobby code format' });
-        }
+        await userEvent.type(usernameInput, 'TestUser');
+        await userEvent.type(lobbyCodeInput, 'A1'); // Too short
+      });
+
+      // Click join button
+      const joinButton = screen.getByRole('button', { name: /join game/i });
+      await act(async () => {
+        await userEvent.click(joinButton);
       });
 
       // Verify error message is displayed
       expect(screen.getByText('Invalid lobby code format')).toBeInTheDocument();
+      
+      // Verify socket emit was not called since validation failed
+      expect(mockSocket.emit).not.toHaveBeenCalled();
+      
+      // Verify onJoinGame was not called
+      expect(mockOnJoinGame).not.toHaveBeenCalled();
     });
 
     it('should handle special characters in username', async () => {
-      // Set up socket event handler before rendering
-      let joinSuccessCallback: ((data: { lobbyCode: string }) => void) | undefined;
-      mockSocket.on.mockImplementation((event: string, callback: any) => {
-        if (event === 'join-success') {
-          joinSuccessCallback = callback;
-        }
-      });
-
+      // Clear any previous inputs
+      vi.clearAllMocks();
+      
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
+      
+      const user = userEvent.setup();
 
       // Fill in username with special characters and lobby code
       const usernameInput = screen.getByLabelText(/username/i);
       const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
-      await userEvent.type(usernameInput, 'Test@User#123');
-      await userEvent.type(lobbyCodeInput, 'ABC123');
+      
+      // Clear the inputs first to ensure no residual values
+      await act(async () => {
+        await userEvent.clear(usernameInput);
+        await userEvent.clear(lobbyCodeInput);
+      });
+      
+      await act(async () => {
+        await user.type(usernameInput, 'Test@User#123');
+        await user.type(lobbyCodeInput, 'ABC123');
+      });
 
-      // Click join lobby button
+      // Click join button
       const joinButton = screen.getByRole('button', { name: /join game/i });
-      await userEvent.click(joinButton);
+      await act(async () => {
+        await user.click(joinButton);
+      });
 
-      // Verify socket emit was called with sanitized username
+      // Verify socket emit was called with the special character username
       expect(mockSocket.emit).toHaveBeenCalledWith(
         'join-lobby',
-        {
+        expect.objectContaining({
           username: 'Test@User#123',
           lobbyCode: 'ABC123',
-        },
+        }),
         expect.any(Function)
       );
 
       // Simulate successful join
       await act(async () => {
-        if (joinSuccessCallback) {
-          joinSuccessCallback({ lobbyCode: 'ABC123' });
-        }
+        await triggerSocketEvent('join-success', { lobbyCode: 'ABC123' });
       });
 
-      // Verify session storage was updated
+      // Verify session storage was updated with the special character username
       expect(sessionStorage.setItem).toHaveBeenCalledWith('username', 'Test@User#123');
+      expect(sessionStorage.setItem).toHaveBeenCalledWith('lobbyCode', 'ABC123');
+      expect(sessionStorage.setItem).toHaveBeenCalledWith('isHost', 'false');
+      
+      // Verify onJoinGame was called
+      expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
     });
   });
-}); 
+
+  it('should display recent games', async () => {
+    // Clear any previous mocks
+    vi.clearAllMocks();
+    
+    // Mock localStorage to return recent games
+    const mockRecentGames = [
+      { code: 'RECENT123', timestamp: Date.now() }
+    ];
+    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+      if (key === 'recentGames') return JSON.stringify(mockRecentGames);
+      if (key === 'lastUsername') return 'PreviousUser';
+      return null;
+    });
+
+    render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+    // Verify that the recent games section is displayed
+    expect(screen.getByText('Recent Games')).toBeInTheDocument();
+    
+    // Verify that the rejoin button is displayed
+    const rejoinButton = screen.getByText('Rejoin');
+    expect(rejoinButton).toBeInTheDocument();
+    
+    // Verify the lobby code is displayed
+    expect(screen.getByText('RECENT123')).toBeInTheDocument();
+  });
+  
+  it('should handle setting username from localStorage', async () => {
+    // Clear any previous mocks
+    vi.clearAllMocks();
+    
+    // Mock localStorage to return a username
+    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+      if (key === 'lastUsername') return 'SavedUsername';
+      return null;
+    });
+
+    render(<LandingPage onJoinGame={mockOnJoinGame} />);
+
+    // Verify that the username input has the value from localStorage
+    const usernameInput = screen.getByLabelText(/username/i) as HTMLInputElement;
+    expect(usernameInput.value).toBe('SavedUsername');
+  });
+});

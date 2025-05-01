@@ -122,6 +122,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       return;
     }
 
+    // Validate lobby code format (should be 6 characters)
+    if (trimmedLobbyCode.length !== 6) {
+      setErrorMessage("Invalid lobby code format");
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage("");
 
@@ -164,7 +170,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
 
     try {
       const response = await axios.post<CreateLobbyResponse>("http://localhost:5001/create-lobby", { username: trimmedUsername });
-      const { lobbyId, lobbyCode } = response.data;
+      const { lobbyCode } = response.data;
       
       sessionStorage.setItem("lobbyCode", lobbyCode);
       sessionStorage.setItem("username", trimmedUsername);
@@ -181,6 +187,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       setErrorMessage("Failed to create lobby");
       setIsLoading(false);
     }
+  };
+
+  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUsername(e.target.value);
+    setErrorMessage(""); // Clear error message when user starts typing
+  };
+
+  const handleLobbyCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLobbyCode(e.target.value);
+    setErrorMessage(""); // Clear error message when user starts typing
   };
 
   const saveToRecentGames = (code: string) => {
@@ -225,7 +241,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   id="username"
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={handleUsernameChange}
                   placeholder="Enter your username"
                   disabled={isLoading}
                   className="bg-white px-4 py-2 rounded-lg shadow-sm border border-indigo-100"
@@ -238,7 +254,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   id="lobbyCode"
                   type="text"
                   value={lobbyCode}
-                  onChange={(e) => setLobbyCode(e.target.value)}
+                  onChange={handleLobbyCodeChange}
                   placeholder="Enter lobby code"
                   disabled={isLoading}
                   className="bg-white px-4 py-2 rounded-lg shadow-sm border border-indigo-100"

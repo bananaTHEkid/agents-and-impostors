@@ -6,7 +6,7 @@ import { DefaultEventsMap } from "@socket.io/component-emitter";
 
 const TEST_PORT = 3000;
 
-jest.setTimeout(3000); // Set timeout to 30 seconds
+jest.setTimeout(30000); // Set timeout to 30 seconds
 
 describe("Game Server API Endpoints (In-Memory)", () => {
     beforeAll(async () => {

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import GameLobby from '../components/GameLobby';
 import { mockSocket, triggerSocketEvent } from './setup';
@@ -22,8 +22,10 @@ describe('GameLobby Component', () => {
   it('displays player list when players join', async () => {
     render(<GameLobby {...mockProps} />);
     
-    // Use triggerSocketEvent instead of mocking on
-    await triggerSocketEvent('player-joined', { username: 'player1' });
+    // Use triggerSocketEvent with player data including ID
+    await act(async () => {
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1' });
+    });
 
     // Wait for player list to update
     await waitFor(() => {
@@ -35,11 +37,13 @@ describe('GameLobby Component', () => {
     render(<GameLobby {...mockProps} />);
     
     // Add at least 2 players so the button isn't disabled
-    await triggerSocketEvent('player-list', { 
-      players: [
-        { username: 'testUser', isHost: true },
-        { username: 'otherPlayer' }
-      ] 
+    await act(async () => {
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'testUser', isHost: true, id: 'host-1' },
+          { username: 'otherPlayer', isHost: false, id: 'player-2' }
+        ] 
+      });
     });
     
     // Wait for the start button to be enabled
@@ -50,21 +54,27 @@ describe('GameLobby Component', () => {
     
     // Click the start button
     const startButton = screen.getByTestId('start-game-button');
-    fireEvent.click(startButton);
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
     
-    // Manually trigger the game-started event since our mock doesn't do this automatically
-    await triggerSocketEvent('game-started', {});
+    // Manually trigger the game-started event
+    await act(async () => {
+      await triggerSocketEvent('game-started', { phase: 'team_assignment' });
+    });
     
     // Now check if onStartGame was called
     expect(mockProps.onStartGame).toHaveBeenCalled();
   });
 
-  it('calls onExitLobby when exit button is clicked', () => {
+  it('calls onExitLobby when exit button is clicked', async () => {
     render(<GameLobby {...mockProps} />);
     
     // Use the correct test ID that matches the component
     const exitButton = screen.getByTestId('exit-game-button');
-    fireEvent.click(exitButton);
+    await act(async () => {
+      fireEvent.click(exitButton);
+    });
     
     expect(mockProps.onExitLobby).toHaveBeenCalled();
   });
@@ -73,7 +83,9 @@ describe('GameLobby Component', () => {
     render(<GameLobby {...mockProps} />);
     
     // First add a player
-    await triggerSocketEvent('player-joined', { username: 'player1' });
+    await act(async () => {
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1' });
+    });
     
     // Wait for player to appear
     await waitFor(() => {
@@ -81,7 +93,9 @@ describe('GameLobby Component', () => {
     });
     
     // Now remove the player
-    await triggerSocketEvent('player-left', { username: 'player1' });
+    await act(async () => {
+      await triggerSocketEvent('player-left', { username: 'player1', id: 'player-1' });
+    });
 
     // Wait for player to be removed from list
     await waitFor(() => {
@@ -93,7 +107,9 @@ describe('GameLobby Component', () => {
     render(<GameLobby {...mockProps} />);
 
     // Use triggerSocketEvent to properly trigger the error event
-    await triggerSocketEvent('error', { message: 'Test error message' });
+    await act(async () => {
+      await triggerSocketEvent('error', { message: 'Test error message' });
+    });
 
     // Wait for error message to appear
     await waitFor(() => {
@@ -104,13 +120,15 @@ describe('GameLobby Component', () => {
   it('updates player list when receiving player-list event', async () => {
     render(<GameLobby {...mockProps} />);
 
-    // Use triggerSocketEvent with correct player format
-    await triggerSocketEvent('player-list', { 
-      players: [
-        { username: 'player1' }, 
-        { username: 'player2' }, 
-        { username: 'player3' }
-      ] 
+    // Use triggerSocketEvent with correct player format including IDs
+    await act(async () => {
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'player1', id: 'player-1' }, 
+          { username: 'player2', id: 'player-2' }, 
+          { username: 'player3', id: 'player-3' }
+        ] 
+      });
     });
 
     // Wait for all players to appear in the list
@@ -121,8 +139,13 @@ describe('GameLobby Component', () => {
     });
   });
 
-  it('cleans up socket listeners on unmount', () => {
+  it('cleans up socket listeners on unmount', async () => {
     const { unmount } = render(<GameLobby {...mockProps} />);
+    
+    // Wait for socket event registration
+    await waitFor(() => {
+      expect(mockSocket.on).toHaveBeenCalledWith('player-list', expect.any(Function));
+    });
     
     unmount();
 
@@ -132,4 +155,4 @@ describe('GameLobby Component', () => {
     expect(mockSocket.off).toHaveBeenCalledWith('error');
     expect(mockSocket.off).toHaveBeenCalledWith('player-list');
   });
-}); 
+});
