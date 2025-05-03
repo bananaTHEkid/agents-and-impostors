@@ -2,54 +2,64 @@ import '@testing-library/jest-dom';
 import { vi, beforeEach } from 'vitest';
 import React from 'react';
 
-// Create a mock socket instance that can be accessed in tests
-const eventHandlers: { [key: string]: Function[] } = {};
+// Interfaces & Typen
+interface SocketEventData {
+  username?: string;
+  lobbyCode?: string;
+  [key: string]: string | undefined;
+}
 
-// Create the mock socket object
-export const mockSocket: any = {
-  on: vi.fn((event: string, callback: Function) => {
-    console.log(`Registering handler for event: ${event}`);
-    if (!eventHandlers[event]) {
-      eventHandlers[event] = [];
-    }
-    eventHandlers[event].push(callback);
-    return callback;
-  }),
-  off: vi.fn((event: string) => {
-    console.log(`Removing handlers for event: ${event}`);
+type SocketEventCallback = (data: SocketEventData) => void;
+
+type JoinLobbyResponse = { success: boolean; lobbyCode?: string; error?: string };
+type GetGameStateResponse = { success: boolean; phase: string };
+type GenericResponse = JoinLobbyResponse | GetGameStateResponse;
+
+type EmitCallback = (response: GenericResponse) => void;
+
+// Event-Handler registrieren
+const eventHandlers: Record<string, SocketEventCallback[]> = {};
+
+// Ausgelagerte onHandler-Funktion mit Typen
+const onHandler = (event: string, callback: SocketEventCallback): SocketEventCallback => {
+  if (!eventHandlers[event]) {
     eventHandlers[event] = [];
-  }),
-  emit: vi.fn((event: string, data: any, callback?: Function) => {
-    console.log(`Emitting event: ${event}`, data);
+  }
+  eventHandlers[event].push(callback);
+  return callback;
+};
+
+// Mock-Socket-Objekt
+interface MockSocket {
+  on: ReturnType<typeof vi.fn>;
+  off: ReturnType<typeof vi.fn>;
+  emit: ReturnType<typeof vi.fn>;
+  connect: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  connected: boolean;
+  id: string;
+}
+
+export const mockSocket: MockSocket = {
+  on: vi.fn((event: string, callback: SocketEventCallback) => onHandler(event, callback)),
+  off: vi.fn(),
+  emit: vi.fn((event: string, data: SocketEventData, callback?: EmitCallback) => {
     if (eventHandlers[event]) {
       eventHandlers[event].forEach(handler => handler(data));
     }
-    
-    // Handle callback with proper response format
     if (callback && typeof callback === 'function') {
-      if (event === 'join-lobby') {
-        if (data?.lobbyCode && data?.username) {
-          callback({ success: true, lobbyCode: data.lobbyCode });
-        } else {
-          callback({ success: false, error: 'Invalid data' });
-        }
-      } else if (event === 'get-game-state') {
-        callback({ success: true, phase: 'waiting' });
-      } else {
-        callback({ success: false, error: 'Unknown event' });
-      }
+      callback({ success: true, lobbyCode: data.lobbyCode ?? undefined });
     }
-    
     return mockSocket;
   }),
   connect: vi.fn(),
   disconnect: vi.fn(),
   connected: true,
-  id: 'mock-socket-id'
+  id: 'mock-socket-id',
 };
 
-// Helper function to trigger socket events in tests
-export const triggerSocketEvent = async (event: string, data: any): Promise<void> => {
+// Hilfsfunktion zum Auslösen von Events in Tests
+export const triggerSocketEvent = async (event: string, data: SocketEventData): Promise<void> => {
   console.log(`Triggering event: ${event}`, data);
   const handlers = eventHandlers[event];
   if (!handlers || handlers.length === 0) {
@@ -62,7 +72,7 @@ export const triggerSocketEvent = async (event: string, data: any): Promise<void
   }
 };
 
-// Mock lucide-react icons
+// Mocks für lucide-react Icons
 vi.mock('lucide-react', () => ({
   AlertCircle: () => React.createElement('div', { 'data-testid': 'alert-circle-icon' }),
   Info: () => React.createElement('div', { 'data-testid': 'info-icon' }),
@@ -93,7 +103,7 @@ vi.mock('lucide-react', () => ({
   Home: () => React.createElement('div', { 'data-testid': 'home-icon' }),
 }));
 
-// Mock axios
+// Mock für axios
 vi.mock('axios', () => ({
   default: {
     post: vi.fn(),
@@ -101,12 +111,12 @@ vi.mock('axios', () => ({
   },
 }));
 
-// Mock socket.io-client
+// Mock für socket.io-client
 vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket),
 }));
 
-// Mock sessionStorage
+// Mock für sessionStorage
 const mockSessionStorage = {
   getItem: vi.fn(),
   setItem: vi.fn(),
@@ -114,7 +124,7 @@ const mockSessionStorage = {
   clear: vi.fn(),
 };
 
-// Mock localStorage
+// Mock für localStorage
 const mockLocalStorage = {
   getItem: vi.fn(),
   setItem: vi.fn(),
@@ -130,25 +140,24 @@ Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
 });
 
-// Reset all mocks before each test
+// Vor jedem Test alles zurücksetzen
 beforeEach(() => {
   vi.clearAllMocks();
-  // Clear event handlers
   Object.keys(eventHandlers).forEach(key => {
     eventHandlers[key] = [];
   });
-  mockSessionStorage.getItem.mockImplementation((key) => {
+  mockSessionStorage.getItem.mockImplementation((key: string) => {
     if (key === 'username') return 'testUser';
     return null;
   });
-  mockLocalStorage.getItem.mockImplementation((key) => {
+  mockLocalStorage.getItem.mockImplementation((key: string) => {
     if (key === 'recentGames') return JSON.stringify([]);
     if (key === 'lastUsername') return 'testUser';
     return null;
   });
 });
 
-// Mock the socket context
+// Mock SocketContext
 vi.mock('../contexts/SocketContext', () => ({
   useSocket: () => ({
     socket: mockSocket,

@@ -171,8 +171,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           text: `Game has ended. Check results!`,
         },
       ]);
-      setGameData(prev => ({
-        ...prev as any,
+      setGameData((prev: GameState | null) => ({
+        ...(prev || {}),
         results: data.results,
         phase: GamePhase.COMPLETED
       }));

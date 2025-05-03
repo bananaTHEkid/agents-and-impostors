@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { io, Socket } from "socket.io-client";
 import { LandingPageProps } from "../types";
@@ -21,14 +21,45 @@ interface CreateLobbyResponse {
   lobbyCode: string;
 }
 
+interface JoinLobbyResponse {
+  success: boolean;
+  lobbyCode?: string;
+  error?: string;
+}
+
+interface GetLobbyPlayersResponse {
+  success: boolean;
+  players?: { username: string }[];
+  error?: string;
+}
+
+interface RecentGame {
+  code: string;
+  timestamp: number;
+}
+
 const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [username, setUsername] = useState("");
   const [lobbyCode, setLobbyCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [recentGames, setRecentGames] = useState<{ code: string; timestamp: number }[]>([]);
+  const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [, setShowGameRules] = useState(false);
+
+  const saveToRecentGames = useCallback(
+    (code: string) => {
+      const updatedGames = [
+        { code, timestamp: Date.now() },
+        ...recentGames.filter((game) => game.code !== code),
+      ].slice(0, 5); // Keep only 5 most recent
+
+      setRecentGames(updatedGames);
+      localStorage.setItem("recentGames", JSON.stringify(updatedGames));
+      localStorage.setItem("lastUsername", username); // Save username for convenience
+    },
+    [recentGames, username]
+  );
 
   useEffect(() => {
     // Initialize socket connection
@@ -39,7 +70,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       console.log("Socket connected successfully");
     });
 
-    newSocket.on("connect_error", (error) => {
+    newSocket.on("connect_error", (error: Error) => {
       console.error("Socket connection error:", error);
       setErrorMessage("Failed to connect to server");
       setIsLoading(false);
@@ -76,7 +107,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       newSocket.emit(
         "get-lobby-players",
         { lobbyCode },
-        (response: { success: boolean; players?: { username: string }[]; error?: string }) => {
+        (response: GetLobbyPlayersResponse) => {
           if (response.success && response.players) {
             console.log("Received initial player list:", response.players);
             // Handle the initial player list here
@@ -112,7 +143,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       newSocket.off("player-list");
       newSocket.disconnect();
     };
-  }, [onJoinGame]);
+  }, [onJoinGame, saveToRecentGames]);
 
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,7 +172,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
           username: trimmedUsername,
           lobbyCode: trimmedLobbyCode,
         },
-        (response: { success: boolean; lobbyCode?: string; error?: string }) => {
+        (response: JoinLobbyResponse) => {
           console.log("Received join-lobby response:", response);
           if (response.success && response.lobbyCode) {
             sessionStorage.setItem("lobbyCode", response.lobbyCode);
@@ -191,7 +222,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
 
       // Call onJoinGame immediately after successful lobby creation
       onJoinGame(lobbyCode);
-    } catch (error) {
+    } catch {
       setErrorMessage("Failed to create lobby");
       setIsLoading(false);
     }
@@ -205,17 +236,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const handleLobbyCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLobbyCode(e.target.value);
     setErrorMessage(""); // Clear error message when user starts typing
-  };
-
-  const saveToRecentGames = (code: string) => {
-    const updatedGames = [
-      { code, timestamp: Date.now() },
-      ...recentGames.filter((game) => game.code !== code),
-    ].slice(0, 5); // Keep only 5 most recent
-
-    setRecentGames(updatedGames);
-    localStorage.setItem("recentGames", JSON.stringify(updatedGames));
-    localStorage.setItem("lastUsername", username); // Save username for convenience
   };
 
   return (
@@ -364,7 +384,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                         <Button
                           onClick={() => {
                             setLobbyCode(game.code);
-                            handleJoinLobby(new Event("click") as any);
+                            handleJoinLobby({
+                              preventDefault: () => {},
+                            } as React.FormEvent<HTMLFormElement>);
                           }}
                           variant="outline"
                           className="text-sm px-4 py-2 hover:bg-indigo-50 transition-colors duration-200 rounded-lg border-indigo-300"

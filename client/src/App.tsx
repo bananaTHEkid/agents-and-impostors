@@ -1,20 +1,34 @@
 import { useEffect, useState } from "react";
 import { SocketProvider, useSocket } from "./contexts/SocketContext";
-import LandingPage from "./components/LandingPage.tsx";
-import GameLobby from "./components/GameLobby.tsx";
-import GameRoom from "./components/GameRoom.tsx";
+import LandingPage from "./components/LandingPage";
+import GameLobby from "./components/GameLobby";
+import GameRoom from "./components/GameRoom";
 import {
   OperationAssignedData,
   GameResultsData,
   PlayerJoinedData,
   JoinSuccessData,
   ErrorData,
+  GamePhase
 } from "./types";
 
 enum View {
   Landing,
   Lobby,
   Game,
+}
+
+interface TeamAssignmentData {
+  team: string;
+  phase?: GamePhase;
+}
+
+interface MessageData {
+  message: string;
+}
+
+interface VoteData {
+  username: string;
 }
 
 const AppContent = () => {
@@ -25,20 +39,29 @@ const AppContent = () => {
   useEffect(() => {
     if (!socket) return;
 
-    socket.on("team-assignment", () => addMessage(`Team assigned`));
-    socket.on("operation-assigned", (data: OperationAssignedData) =>
-      addMessage(`Operation assigned: ${data.operation}`)
-    );
-    socket.on("operation-phase-complete", () =>
-      addMessage("Operation phase completed.")
-    );
-    socket.on("vote-submitted", () => addMessage("A vote was submitted."));
-    socket.on("game-results", (data: GameResultsData) =>
-      addMessage(`Game results: ${JSON.stringify(data.results)}`)
-    );
-    socket.on("error", (err: ErrorData) =>
-      addMessage(`Error: ${err.message || err}`)
-    );
+    socket.on("team-assignment", (data: TeamAssignmentData) => {
+      addMessage(`Team assigned: ${data.team}`);
+    });
+
+    socket.on("operation-assigned", (data: OperationAssignedData) => {
+      addMessage(`Operation assigned: ${data.operation}`);
+    });
+
+    socket.on("operation-phase-complete", (data: MessageData) => {
+      addMessage(data.message || "Operation phase completed.");
+    });
+
+    socket.on("vote-submitted", (data: VoteData) => {
+      addMessage(`Vote submitted by ${data.username}`);
+    });
+
+    socket.on("game-results", (data: GameResultsData) => {
+      addMessage(`Game results: ${JSON.stringify(data.results)}`);
+    });
+
+    socket.on("error", (error: ErrorData) => {
+      addMessage(`Error: ${error.message || "Unknown error"}`);
+    });
 
     socket.on("player-joined", (data: PlayerJoinedData) => {
       addMessage(`${data.username} joined lobby.`);
