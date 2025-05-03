@@ -22,7 +22,11 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* TypeScript options */
+    "types": ["node"],
+    "typeRoots": ["node_modules/@types"]
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]

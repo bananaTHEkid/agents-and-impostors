@@ -3,6 +3,13 @@ import { SocketProvider, useSocket } from "./contexts/SocketContext";
 import LandingPage from "./components/LandingPage.tsx";
 import GameLobby from "./components/GameLobby.tsx";
 import GameRoom from "./components/GameRoom.tsx";
+import {
+  OperationAssignedData,
+  GameResultsData,
+  PlayerJoinedData,
+  JoinSuccessData,
+  ErrorData,
+} from "./types";
 
 enum View {
   Landing,
@@ -19,17 +26,25 @@ const AppContent = () => {
     if (!socket) return;
 
     socket.on("team-assignment", () => addMessage(`Team assigned`));
-    socket.on("operation-assigned", (data) => addMessage(`Operation assigned: ${data.operation}`));
-    socket.on("operation-phase-complete", () => addMessage("Operation phase completed."));
+    socket.on("operation-assigned", (data: OperationAssignedData) =>
+      addMessage(`Operation assigned: ${data.operation}`)
+    );
+    socket.on("operation-phase-complete", () =>
+      addMessage("Operation phase completed.")
+    );
     socket.on("vote-submitted", () => addMessage("A vote was submitted."));
-    socket.on("game-results", (data) => addMessage(`Game results: ${JSON.stringify(data)}`));
-    socket.on("error", (err) => addMessage(`Error: ${err.message || err}`));
-    
-    socket.on("player-joined", (data) => {
+    socket.on("game-results", (data: GameResultsData) =>
+      addMessage(`Game results: ${JSON.stringify(data.results)}`)
+    );
+    socket.on("error", (err: ErrorData) =>
+      addMessage(`Error: ${err.message || err}`)
+    );
+
+    socket.on("player-joined", (data: PlayerJoinedData) => {
       addMessage(`${data.username} joined lobby.`);
     });
-    
-    socket.on("join-success", (data) => {
+
+    socket.on("join-success", (data: JoinSuccessData) => {
       addMessage(`Successfully joined lobby: ${data.lobbyCode}`);
       setLobbyCode(data.lobbyCode);
       setView(View.Lobby);
@@ -73,17 +88,14 @@ const AppContent = () => {
         <LandingPage onJoinGame={handleJoinGame} />
       )}
       {view === View.Lobby && (
-        <GameLobby 
+        <GameLobby
           lobbyCode={lobbyCode}
           onStartGame={handleStartGame}
           onExitLobby={handleExitGame}
         />
       )}
       {view === View.Game && (
-        <GameRoom 
-          lobbyCode={lobbyCode}
-          onExitGame={handleExitGame}
-        />
+        <GameRoom lobbyCode={lobbyCode} onExitGame={handleExitGame} />
       )}
     </div>
   );

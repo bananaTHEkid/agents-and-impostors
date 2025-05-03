@@ -43,4 +43,25 @@ export interface GameState {
     operation: string;
     win_status: string;
   }>;
-} 
+}
+
+// New interfaces for socket data
+export interface OperationAssignedData {
+  operation: string;
+}
+
+export interface GameResultsData {
+  results: GameState["results"];
+}
+
+export interface PlayerJoinedData {
+  username: string;
+}
+
+export interface JoinSuccessData {
+  lobbyCode: string;
+}
+
+export interface ErrorData {
+  message?: string;
+}

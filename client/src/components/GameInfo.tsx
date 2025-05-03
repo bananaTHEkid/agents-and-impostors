@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Badge, Alert } from 'react-bootstrap';
 import { useSocket } from '../contexts/SocketContext';
+import {
+  OperationAssignedData,
+  GameResultsData,
+  PlayerJoinedData,
+  ErrorData,
+} from '../types';
 import { GamePhase } from '../types';
 
 interface OperationInfo {
@@ -64,11 +70,31 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
         }
       });
 
+      socket.on('operation-assigned', (data: OperationAssignedData) => {
+        console.log(`Operation assigned: ${data.operation}`);
+      });
+
+      socket.on('game-results', (data: GameResultsData) => {
+        console.log(`Game results: ${JSON.stringify(data.results)}`);
+      });
+
+      socket.on('player-joined', (data: PlayerJoinedData) => {
+        console.log(`${data.username} joined the game.`);
+      });
+
+      socket.on('error', (data: ErrorData) => {
+        console.error(`Error: ${data.message}`);
+      });
+
       return () => {
         socket.off('operation-prepared');
         socket.off('team-assignment');
         socket.off('phase-change');
         socket.off('game-state');
+        socket.off('operation-assigned');
+        socket.off('game-results');
+        socket.off('player-joined');
+        socket.off('error');
       };
     }
   }, [socket, username]);
@@ -194,4 +220,4 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
   );
 };
 
-export default GameInfo; 
+export default GameInfo;

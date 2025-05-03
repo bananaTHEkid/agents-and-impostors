@@ -6,7 +6,17 @@ import {
   Alert,
   Badge,
 } from "react-bootstrap";
-import { GameRoomProps, GameState, Player, GamePhase } from "../types";
+import {
+  GameRoomProps,
+  GameState,
+  Player,
+  GamePhase,
+  OperationAssignedData,
+  GameResultsData,
+  PlayerJoinedData,
+  ErrorData,
+  JoinSuccessData,
+} from "../types";
 import GameInfo from "./GameInfo";
 import { useSocket } from "../contexts/SocketContext";
 import { FiLogOut, FiMessageCircle, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
@@ -120,7 +130,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
-    socket.on("operation-assigned", (data) => {
+    socket.on("operation-assigned", (data: OperationAssignedData) => {
+      console.log(`Operation assigned: ${data.operation}`);
       setMessages((prev) => [
         ...prev,
         {
@@ -150,7 +161,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
-    socket.on("game-results", (data) => {
+    socket.on("game-results", (data: GameResultsData) => {
+      console.log(`Game results: ${JSON.stringify(data.results)}`);
       setCurrentPhase(GamePhase.COMPLETED);
       setMessages((prev) => [
         ...prev,
@@ -166,6 +178,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       }));
     });
 
+    socket.on("player-joined", (data: PlayerJoinedData) => {
+      console.log(`${data.username} joined the game.`);
+    });
+
+    socket.on("join-success", (data: JoinSuccessData) => {
+      console.log(`Successfully joined lobby: ${data.lobbyCode}`);
+    });
+
+    socket.on("error", (error: ErrorData) => {
+      console.error(`Error: ${error.message}`);
+    });
+
     return () => {
       socket.off("game-state");
       socket.off("player-list");
@@ -178,6 +202,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("player-voted");
       socket.off("vote-submitted");
       socket.off("game-results");
+      socket.off("player-joined");
+      socket.off("join-success");
+      socket.off("error");
     };
   }, [socket, lobbyCode, username]);
 
