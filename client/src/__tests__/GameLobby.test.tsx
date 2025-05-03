@@ -155,4 +155,62 @@ describe('GameLobby Component', () => {
     expect(mockSocket.off).toHaveBeenCalledWith('error');
     expect(mockSocket.off).toHaveBeenCalledWith('player-list');
   });
+
+  it('disables start button when there are fewer than 2 players', async () => {
+    render(<GameLobby {...mockProps} />);
+
+    // Trigger player-list event with only one player
+    await act(async () => {
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'testUser', isHost: true, id: 'host-1' }
+        ] 
+      });
+    });
+
+    // Wait for the start button to be disabled
+    await waitFor(() => {
+      const startButton = screen.getByTestId('start-game-button');
+      expect(startButton).toBeDisabled();
+    });
+  });
+
+  it('enables start button when there are at least 2 players and user is host', async () => {
+    render(<GameLobby {...mockProps} />);
+
+    // Trigger player-list event with two players, including the host
+    await act(async () => {
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'testUser', isHost: true, id: 'host-1' },
+          { username: 'otherPlayer', isHost: false, id: 'player-2' }
+        ] 
+      });
+    });
+
+    // Wait for the start button to be enabled
+    await waitFor(() => {
+      const startButton = screen.getByTestId('start-game-button');
+      expect(startButton).not.toBeDisabled();
+    });
+  });
+
+  it('does not render start button when user is not the host', async () => {
+    render(<GameLobby {...mockProps} />);
+
+    // Trigger player-list event with two players, but the user is not the host
+    await act(async () => {
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'testUser', isHost: false, id: 'player-1' },
+          { username: 'hostUser', isHost: true, id: 'host-2' }
+        ] 
+      });
+    });
+
+    // Wait for the start button to not be rendered
+    await waitFor(() => {
+      expect(screen.queryByTestId('start-game-button')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -51,7 +51,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
     });
 
     it("should allow a player to join an existing lobby", (done) => {
-        const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+        const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
         clientSockets.push(clientSocket);
 
         clientSocket.on("connect", async () => {
@@ -78,7 +78,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
     });
 
     it("should not allow a player to join a non-existent lobby", (done) => {
-        const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+        const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
         clientSockets.push(clientSocket);
 
         clientSocket.on("connect", () => {
@@ -118,7 +118,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
                 // Function to create and connect a player socket
                 const connectPlayerSocket = (playerName: string, isCreator = false): Promise<Socket> => {
                     return new Promise<Socket>((resolve, reject) => {
-                        const socket = Client(`http://localhost:${TEST_PORT}`);
+                        const socket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
                         clientSockets.push(socket);
                         
                         socket.on("connect", () => {
@@ -219,7 +219,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
         await db.run("UPDATE lobbies SET status = 'playing' WHERE id = ?", [lobbyResponse.body.lobbyId]);
 
         return new Promise<void>((resolve) => {
-            const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+            const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
             clientSockets.push(clientSocket);
 
             let votesSubmitted = 0;
@@ -242,7 +242,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
     });
 
     it("should handle invalid usernames", (done) => {
-        const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+        const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
         clientSockets.push(clientSocket);
 
         clientSocket.on("connect", () => {
@@ -257,7 +257,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
     });
 
     it("should handle game start with insufficient players", (done) => {
-        const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+        const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
         clientSockets.push(clientSocket);
 
         clientSocket.on("connect", async () => {
@@ -279,7 +279,7 @@ describe("Game Server API Endpoints (In-Memory)", () => {
     });
 
     it("should handle duplicate usernames in the same lobby", (done) => {
-        const clientSocket = Client(`http://localhost:${TEST_PORT}`);
+        const clientSocket = Client(`${process.env.SERVER_URL || 'http://localhost'}:${TEST_PORT}`);
         clientSockets.push(clientSocket);
 
         clientSocket.on("connect", async () => {

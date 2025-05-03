@@ -13,7 +13,7 @@ describe('Multiple Connections Test', () => {
     httpServer = createServer();
     io = new Server(httpServer, {
       cors: {
-        origin: "http://localhost:3000",
+        origin: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}`,
         methods: ["GET", "POST"],
         credentials: true
       }
@@ -156,4 +156,4 @@ describe('Multiple Connections Test', () => {
     }, 5000);
     timeout.unref(); // Prevent the timeout from keeping the process alive
   }, 15000);
-}); 
+});
