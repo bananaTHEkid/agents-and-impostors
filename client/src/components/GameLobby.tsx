@@ -25,21 +25,11 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
     });
 
     // Listen for player updates
-    socket.on("player-list", (data) => {
+    socket.on("player-list", (data: Player[] | { players: Player[] }) => {
       if (Array.isArray(data)) {
-        // If it's a plain array of strings, convert to Player objects
-        if (typeof data[0] === 'string') {
-          setPlayers(data.map(username => ({ username })));
-        } else {
-          setPlayers(data);
-        }
+        setPlayers(data as Player[]);
       } else if (data.players) {
-        // If data.players is a plain array of strings, convert to Player objects
-        if (Array.isArray(data.players) && data.players.length > 0 && typeof data.players[0] === 'string') {
-          setPlayers(data.players.map((username: any) => ({ username })));
-        } else {
-          setPlayers(data.players);
-        }
+        setPlayers(data.players as Player[]);
       }
     });
 
@@ -49,12 +39,12 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
     });
 
     // Listen for errors
-    socket.on("lobby-error", (error) => {
-      setErrorMessage(error.message || error);
+    socket.on("lobby-error", (error: { message?: string }) => {
+      setErrorMessage(error.message || "An error occurred");
     });
 
-    socket.on("error", (error) => {
-      setErrorMessage(error.message || error);
+    socket.on("error", (error: { message?: string }) => {
+      setErrorMessage(error.message || "An error occurred");
     });
 
     // Listen for lobby closed (by host)
@@ -63,7 +53,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
     });
 
     // Listen for a new player joining
-    socket.on("player-joined", (data) => {
+    socket.on("player-joined", (data: { username: string }) => {
       setPlayers((prevPlayers) => {
         const existingPlayer = prevPlayers.find(
           (p) => p.username === data.username
@@ -74,7 +64,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
     });
 
     // Listen for a player leaving
-    socket.on("player-left", (data) => {
+    socket.on("player-left", (data: { username: string }) => {
       setPlayers((prevPlayers) =>
         prevPlayers.filter((player) => player.username !== data.username)
       );

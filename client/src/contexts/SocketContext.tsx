@@ -42,14 +42,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setIsConnected(true);
     });
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      setIsConnected(false);
+    socketInstance.on('disconnect', (reason: string) => {
+      handleDisconnect(reason);
     });
 
-    socketInstance.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      setIsConnected(false);
+    socketInstance.on('connect_error', (error: Error) => {
+      handleSocketError(error);
     });
 
     // Force connect if not already connected
@@ -73,3 +71,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     </SocketContext.Provider>
   );
 };
+
+// Explicitly typing parameters
+function handleSocketError(error: Error) {
+  console.error('Socket connection error:', error);
+}
+
+function handleDisconnect(reason: string) {
+  console.log('Socket disconnected:', reason);
+}
