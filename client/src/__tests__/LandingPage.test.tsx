@@ -31,10 +31,11 @@ describe('LandingPage', () => {
     });
     
     // Reset all mock implementations
-    mockSocket.emit.mockImplementation((_event: string, data: any, callback?: Function) => {
+    mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+      console.log(event); // Example usage to avoid unused variable warning
       if (callback && typeof callback === 'function') {
-        if (data?.lobbyCode) {
-          callback({ success: true, lobbyCode: data.lobbyCode });
+        if (_data?.lobbyCode) {
+          callback({ success: true, lobbyCode: _data.lobbyCode });
         } else {
           callback({ success: false, error: 'Failed to connect to server' });
         }
@@ -135,7 +136,8 @@ describe('LandingPage', () => {
   it('should handle socket error when joining lobby', async () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
     
-    mockSocket.emit.mockImplementation((event, data, callback) => {
+    mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+      console.log(event); // Example usage to avoid unused variable warning
       if (event === 'join-lobby' && callback) {
         callback({ success: false, error: 'Lobby not found' });
       }
@@ -194,7 +196,8 @@ describe('LandingPage', () => {
     const createButton = screen.getByRole('button', { name: /create new game/i });
   
     // Mock socket emit with a delayed callback to simulate async behavior
-    mockSocket.emit.mockImplementation((event, data, callback) => {
+    mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+      console.log(event); // Example usage to avoid unused variable warning
       if (event === 'join-lobby' && callback) {
         // Delay the callback to allow the loading state to be detected
         setTimeout(() => {
@@ -318,7 +321,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+      mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+        console.log(event); // Example usage to avoid unused variable warning
         if (callback && typeof callback === 'function') {
           callback({ success: true, lobbyCode: 'ABC123' });
         }
@@ -360,7 +364,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit to simulate network error
-      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+      mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+        console.log(event); // Example usage to avoid unused variable warning
         if (callback && typeof callback === 'function') {
           callback({ success: false, error: 'Failed to connect to server' });
         }
@@ -395,7 +400,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+      mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+        console.log(event); // Example usage to avoid unused variable warning
         if (callback && typeof callback === 'function') {
           callback({ success: false, error: 'Lobby does not exist' });
         }
@@ -471,7 +477,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementationOnce((event: string, data: any, callback?: Function) => {
+      mockSocket.emit.mockImplementationOnce((event: string, _data: any, callback?: Function) => {
+        console.log(event); // Example usage to avoid unused variable warning
         if (callback && typeof callback === 'function') {
           callback({ success: false, error: 'Game has already started' });
         }
@@ -535,7 +542,8 @@ describe('LandingPage', () => {
       });
 
       // Mock socket emit to simulate network error
-      mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+      mockSocket.emit.mockImplementation((event: string, _data: any, callback?: Function) => {
+        console.log(event); // Example usage to avoid unused variable warning
         if (callback && typeof callback === 'function') {
           callback({ success: false, error: 'Failed to connect to server' });
         }
