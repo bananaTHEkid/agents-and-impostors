@@ -148,8 +148,9 @@ const initializeDatabase = async (useInMemory: boolean = false) => {
 // Middleware
 app.use(express.json());
 
+// Update CORS configuration to dynamically use CLIENT_ORIGIN from the environment variables
 app.use(cors({
-    origin: "http://localhost:5000",
+    origin: process.env.CLIENT_ORIGIN || "http://localhost:5000",
     credentials: true,
 }));
 
