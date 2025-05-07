@@ -22,31 +22,31 @@ interface GameInfoProps {
   className?: string;
 }
 
-const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
+const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }) => {
   const { socket } = useSocket();
   const [operation, setOperation] = useState<string | null>(null);
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
   const [team, setTeam] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>(GamePhase.WAITING);
-  const [showTeamReveal, setShowTeamReveal] = useState(false);
-  const username = sessionStorage.getItem('username');
+  const [showTeamReveal, setShowTeamReveal] = useState<boolean>(false);
+  const username: string | null = sessionStorage.getItem('username');
 
   useEffect(() => {
     if (socket) {
-      socket.on('operation-prepared', (data) => {
+      socket.on('operation-prepared', (data: { operation: string; info: OperationInfo }) => {
         setOperation(data.operation);
         setOperationInfo(data.info);
       });
 
-      socket.on('team-assignment', (data) => {
+      socket.on('team-assignment', (data: { impostors: string[]; agents: string[]; phase: GamePhase }) => {
         // Start team reveal animation
         setShowTeamReveal(true);
         
         // Determine the player's team from the data after a short delay for animation
         setTimeout(() => {
-          if (data.impostors && data.impostors.includes(username)) {
+          if (data.impostors && data.impostors.includes(username || '')) {
             setTeam('impostor');
-          } else if (data.agents && data.agents.includes(username)) {
+          } else if (data.agents && data.agents.includes(username || '')) {
             setTeam('agent');
           }
           
@@ -56,7 +56,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
         }, 2000); // 2-second delay for dramatic effect
       });
       
-      socket.on('phase-change', (data) => {
+      socket.on('phase-change', (data: { phase: GamePhase }) => {
         setPhase(data.phase);
         // If we're past team assignment, ensure team is visible
         if (data.phase !== GamePhase.TEAM_ASSIGNMENT) {
@@ -64,7 +64,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
         }
       });
 
-      socket.on('game-state', (data) => {
+      socket.on('game-state', (data: { phase: GamePhase }) => {
         if (data.phase) {
           setPhase(data.phase);
         }
@@ -99,12 +99,12 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
     }
   }, [socket, username]);
 
-  const getTeamColor = () => {
+  const getTeamColor = (): string => {
     if (!team) return 'secondary';
     return team === 'impostor' ? 'danger' : 'success';
   };
 
-  const getPhaseLabel = () => {
+  const getPhaseLabel = (): string => {
     switch (phase) {
       case GamePhase.WAITING:
         return 'Waiting for Game to Start';
@@ -122,11 +122,11 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }) => {
   };
 
   // Only show team and operation info after they're assigned
-  const showTeamInfo = phase !== GamePhase.WAITING && team && !showTeamReveal;
-  const showOperationInfo = operation && (phase === GamePhase.VOTING || phase === GamePhase.COMPLETED);
+  const showTeamInfo: boolean = phase !== GamePhase.WAITING && team !== null && !showTeamReveal;
+  const showOperationInfo: boolean = operation !== null && (phase === GamePhase.VOTING || phase === GamePhase.COMPLETED);
 
   // Team reveal component
-  const renderTeamReveal = () => {
+  const renderTeamReveal = (): JSX.Element | null => {
     if (!showTeamReveal || phase !== GamePhase.TEAM_ASSIGNMENT) return null;
     
     return (

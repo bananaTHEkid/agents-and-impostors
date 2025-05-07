@@ -145,7 +145,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
                 onClick={copyLobbyCode}
                 className="flex items-center gap-2 py-2 px-4 hover:bg-indigo-100 transition-colors duration-200 w-full sm:w-auto"
               >
-                <FiCopy className="text-indigo-600" /> 
+                <span>{FiCopy({ className: "text-indigo-600" })}</span> 
                 <span>Copy Code</span>
               </Button>
             </div>
@@ -158,7 +158,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
           {/* Players section */}
           <div className="mb-6 md:mb-8">
             <div className="flex items-center gap-2 mb-4">
-              <FiUsers className="text-indigo-600 text-xl" />
+              <span className="text-indigo-600 text-xl">{FiUsers({})}</span>
               <h3 className="text-xl font-semibold text-gray-800">Players</h3>
               <span className="bg-indigo-100 text-indigo-800 text-xs font-medium px-2.5 py-0.5 rounded-full ml-2">
                 {players.length} {players.length === 1 ? 'player' : 'players'}
@@ -206,7 +206,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
               data-testid="exit-game-button"
               className="flex items-center justify-center gap-2 py-3 px-6 text-base font-medium hover:bg-red-50 transition-colors duration-200"
             >
-              <FiLogOut /> Leave Lobby
+              {FiLogOut({})} Leave Lobby
             </Button>
 
             {isHost && (
@@ -217,7 +217,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
                 data-testid="start-game-button"
                 className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium bg-gradient-to-r from-green-500 to-emerald-500 border-0 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
               >
-                <FiPlay /> Start Game
+                {FiPlay({})} Start Game
               </Button>
             )}
           </div>

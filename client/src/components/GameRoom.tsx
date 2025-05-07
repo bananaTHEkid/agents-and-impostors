@@ -372,7 +372,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             <h2 className="text-2xl font-bold text-white">Triple Game</h2>
             <div className="flex items-center gap-4">
               <div className="bg-white/20 text-white rounded-full px-4 py-1 flex items-center gap-2">
-                <FiClock className="text-white/80" />
+                {FiClock({ className: "text-white/80" })}
                 <span>Phase: {currentPhase}</span>
               </div>
               <Button 
@@ -381,7 +381,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 onClick={handleLeaveGame}
                 data-testid="exit-game-button"
               >
-                <FiLogOut /> Leave Game
+                {FiLogOut({})}
+                Leave Game
               </Button>
             </div>
           </div>
@@ -408,7 +409,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 data-testid="game-messages"
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <FiMessageCircle className="text-indigo-600 text-xl" />
+                  {FiMessageCircle({ className: "text-indigo-600 text-xl" })}
                   <h3 className="text-xl font-semibold text-gray-800">Game Messages</h3>
                 </div>
                 {messages.map((msg, index) => (
@@ -459,7 +460,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                     variant="primary"
                     className="flex items-center gap-2 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 border-0 rounded-lg transition-colors duration-200"
                   >
-                    <FiCheckCircle /> Submit
+                    {FiCheckCircle({})} Submit
                   </Button>
                 </Form>
               )}
@@ -471,7 +472,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
                 <div className="bg-indigo-50 p-4 border-b border-indigo-100">
                   <div className="flex items-center gap-2">
-                    <FiUsers className="text-indigo-600 text-xl" />
+                    {FiUsers({ className: "text-indigo-600 text-xl" })}
                     <h3 className="text-xl font-semibold text-gray-800">Players</h3>
                   </div>
                 </div>
