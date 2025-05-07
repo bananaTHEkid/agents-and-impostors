@@ -11,6 +11,7 @@ const SocketContext = createContext<SocketContextType>({ socket: null, isConnect
 
 // Create a singleton socket instance outside of React's lifecycle
 let socketInstance: Socket | null = null;
+let reconnectAttempts = 0; // Track reconnection attempts
 
 export const useSocket = () => useContext(SocketContext);
 
@@ -19,44 +20,55 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // Only create a new socket if one doesn't exist
     if (!socketInstance) {
       socketInstance = io(API_BASE_URL, {
         transports: ['websocket'],
         upgrade: false,
         forceNew: false,
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
+        reconnection: false, // Disable default reconnection
         timeout: 10000,
         auth: {
-          clientId: Date.now().toString(),  // Add a unique client identifier
+          clientId: Date.now().toString(),
         },
       });
     }
 
     socketRef.current = socketInstance;
 
-    // Set up event listeners
+    const connectWithBackoff = () => {
+      const delay = Math.min(1000 * 2 ** reconnectAttempts, 30000); // Exponential backoff with max delay of 30 seconds
+      setTimeout(() => {
+        if (!socketInstance?.connected) {
+          console.log(`Reconnecting... Attempt ${reconnectAttempts + 1}`);
+          reconnectAttempts++;
+          socketInstance?.connect();
+        }
+      }, delay);
+    };
+
     socketInstance.on('connect', () => {
       console.log('Socket connected with ID:', socketInstance?.id);
       setIsConnected(true);
+      reconnectAttempts = 0; // Reset attempts on successful connection
     });
 
     socketInstance.on('disconnect', (reason: string) => {
-      handleDisconnect(reason);
+      console.log('Socket disconnected:', reason);
+      setIsConnected(false);
+      if (reason !== 'io client disconnect') {
+        connectWithBackoff();
+      }
     });
 
     socketInstance.on('connect_error', (error: Error) => {
-      handleSocketError(error);
+      console.error('Socket connection error:', error);
+      connectWithBackoff();
     });
 
-    // Force connect if not already connected
     if (!socketInstance.connected) {
       socketInstance.connect();
     }
 
-    // Cleanup function
     return () => {
       if (socketInstance) {
         socketInstance.off('connect');
@@ -64,7 +76,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         socketInstance.off('connect_error');
       }
     };
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []);
 
   return (
     <SocketContext.Provider value={{ socket: socketRef.current, isConnected }}>
@@ -72,12 +84,3 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     </SocketContext.Provider>
   );
 };
-
-// Explicitly typing parameters
-function handleSocketError(error: Error) {
-  console.error('Socket connection error:', error);
-}
-
-function handleDisconnect(reason: string) {
-  console.log('Socket disconnected:', reason);
-}

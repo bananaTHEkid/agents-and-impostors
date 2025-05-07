@@ -9,7 +9,6 @@ import { Label } from "../components/ui/label"; // Shadcn label
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"; // Shadcn alert
 import { API_BASE_URL } from "@/config";
 
-
 interface JoinSuccessData {
   lobbyCode: string;
 }
@@ -49,23 +48,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [, setShowGameRules] = useState(false);
 
-  const saveToRecentGames = useCallback(
-    (code: string) => {
-      const updatedGames = [
-        { code, timestamp: Date.now() },
-        ...recentGames.filter((game) => game.code !== code),
-      ].slice(0, 5); // Keep only 5 most recent
-
-      setRecentGames(updatedGames);
-      localStorage.setItem("recentGames", JSON.stringify(updatedGames));
-      localStorage.setItem("lastUsername", username); // Save username for convenience
-    },
-    [recentGames, username]
-  );
-
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(API_BASE_URL);
+    // Initialize socket connection with reconnection strategy
+    const newSocket = io(API_BASE_URL, {
+      reconnection: true, // Enable reconnection
+      reconnectionAttempts: 5, // Limit to 5 attempts
+      reconnectionDelay: 2000, // 2 seconds delay between attempts
+    });
+
     console.log("Socket connecting...");
 
     newSocket.on("connect", () => {
@@ -76,6 +66,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       console.error("Socket connection error:", error);
       setErrorMessage("Failed to connect to server");
       setIsLoading(false);
+    });
+
+    newSocket.on("reconnect_attempt", (attempt) => {
+      console.log(`Reconnect attempt #${attempt}`);
+    });
+
+    newSocket.on("reconnect_failed", () => {
+      console.error("Reconnection failed after maximum attempts");
+      setErrorMessage("Unable to reconnect to the server");
     });
 
     setSocket(newSocket);
@@ -143,9 +142,27 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       newSocket.off("connect");
       newSocket.off("connect_error");
       newSocket.off("player-list");
+      newSocket.off("reconnect_attempt");
+      newSocket.off("reconnect_failed");
       newSocket.disconnect();
     };
-  }, [onJoinGame, saveToRecentGames]);
+  }, []); // Empty dependency array ensures this runs only once
+
+  const saveToRecentGames = useCallback(
+    (code: string) => {
+      setRecentGames((prevGames) => {
+        const updatedGames = [
+          { code, timestamp: Date.now() },
+          ...prevGames.filter((game) => game.code !== code),
+        ].slice(0, 5); // Keep only 5 most recent
+
+        localStorage.setItem("recentGames", JSON.stringify(updatedGames));
+        localStorage.setItem("lastUsername", username); // Save username for convenience
+        return updatedGames;
+      });
+    },
+    [username] // Only depends on username
+  );
 
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();

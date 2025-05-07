@@ -9,6 +9,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
   const [players, setPlayers] = useState<Player[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [copySuccess, setCopySuccess] = useState("");
+  const [notification, setNotification] = useState("");
   const isHost =
     players.find(
       (player) => player.username === sessionStorage.getItem("username")
@@ -54,13 +55,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
 
     // Listen for a new player joining
     socket.on("player-joined", (data: { username: string }) => {
-      setPlayers((prevPlayers) => {
-        const existingPlayer = prevPlayers.find(
-          (p) => p.username === data.username
-        );
-        if (existingPlayer) return prevPlayers;
-        return [...prevPlayers, { username: data.username }];
-      });
+      setPlayers((prevPlayers) => [...prevPlayers, { username: data.username }]);
+      setNotification(`${data.username} has joined the lobby.`); // Display a notification
     });
 
     // Listen for a player leaving
@@ -127,6 +123,18 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onStartGame, onExitLob
               className="mb-6 rounded-lg border-0 shadow-sm"
             >
               {errorMessage}
+            </Alert>
+          )}
+
+          {/* Notification message */}
+          {notification && (
+            <Alert
+              variant="info"
+              onClose={() => setNotification("")}
+              dismissible
+              className="mb-6 rounded-lg border-0 shadow-sm"
+            >
+              {notification}
             </Alert>
           )}
 

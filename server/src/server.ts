@@ -397,7 +397,7 @@ io.on("connection", (socket: Socket) => {
     // Clean up any existing socket for this user
     const cleanupOldSocket = (username: string) => {
         const oldSocketId = userSockets[username];
-        if (oldSocketId && oldSocketId !== socket.id) {
+        if (oldSocketId && oldSocketId !== socket.id) { // Ensure it doesn't disconnect the current socket
             const oldSocket = io.sockets.sockets.get(oldSocketId);
             if (oldSocket) {
                 oldSocket.disconnect(true);
