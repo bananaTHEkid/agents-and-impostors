@@ -828,12 +828,16 @@ io.on("connection", (socket: Socket) => {
     });
 });
 
-export const startServer = async (port: number = 5001) => {
+// Update the server to use Render's dynamic port and host settings
+const PORT = process.env.PORT || 5001;
+const HOST = process.env.SERVER_HOST || '0.0.0.0';
+
+export const startServer = async (port: number = parseInt(PORT.toString())) => {
   await initializeDatabase();
   return new Promise<void>((resolve) => {
     const portNumber = typeof port === 'number' ? port : 5001;
-    server.listen(portNumber, () => {
-      console.log(`Server running on port ${portNumber}`);
+    server.listen(portNumber, HOST, () => {
+      console.log(`Server running on ${HOST}:${portNumber}`);
       resolve();
     });
   });
