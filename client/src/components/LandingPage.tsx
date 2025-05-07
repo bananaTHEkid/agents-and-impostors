@@ -48,6 +48,22 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [, setShowGameRules] = useState(false);
 
+  const saveToRecentGames = useCallback(
+    (code: string) => {
+      setRecentGames((prevGames) => {
+        const updatedGames = [
+          { code, timestamp: Date.now() },
+          ...prevGames.filter((game) => game.code !== code),
+        ].slice(0, 5); // Keep only 5 most recent
+
+        localStorage.setItem("recentGames", JSON.stringify(updatedGames));
+        localStorage.setItem("lastUsername", username); // Save username for convenience
+        return updatedGames;
+      });
+    },
+    [username] // Only depends on username
+  );
+
   useEffect(() => {
     // Initialize socket connection with reconnection strategy
     const newSocket = io(API_BASE_URL, {
@@ -134,6 +150,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     if (savedUsername) {
       setUsername(savedUsername);
     }
+    
 
     // Cleanup on unmount
     return () => {
@@ -146,23 +163,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       newSocket.off("reconnect_failed");
       newSocket.disconnect();
     };
-  }, []); // Empty dependency array ensures this runs only once
+  }, [onJoinGame, saveToRecentGames, username]); // Include missing dependencies
 
-  const saveToRecentGames = useCallback(
-    (code: string) => {
-      setRecentGames((prevGames) => {
-        const updatedGames = [
-          { code, timestamp: Date.now() },
-          ...prevGames.filter((game) => game.code !== code),
-        ].slice(0, 5); // Keep only 5 most recent
-
-        localStorage.setItem("recentGames", JSON.stringify(updatedGames));
-        localStorage.setItem("lastUsername", username); // Save username for convenience
-        return updatedGames;
-      });
-    },
-    [username] // Only depends on username
-  );
 
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();
