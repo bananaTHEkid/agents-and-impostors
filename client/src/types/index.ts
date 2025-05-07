@@ -83,3 +83,8 @@ export interface SocketEventData {
   message?: string;
   [key: string]: unknown; // Index signature for additional properties
 }
+export interface GameMessage {
+  type: 'system' | 'prompt' | 'player';
+  text: string;
+  from?: string; // Optional, only for player messages
+}

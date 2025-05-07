@@ -16,6 +16,7 @@ import {
   PlayerJoinedData,
   ErrorData,
   JoinSuccessData,
+  GameMessage,
 } from "../types";
 import GameInfo from "./GameInfo";
 import { useSocket } from "../contexts/SocketContext";
@@ -25,20 +26,20 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const { socket } = useSocket();
   const [gameData, setGameData] = useState<GameState | null>(() => {
     const saved = sessionStorage.getItem('gameData');
-    return saved ? JSON.parse(saved) : null;
+    return saved ? JSON.parse(saved) as GameState : null;
   });
   const [players, setPlayers] = useState<Player[]>(() => {
     const saved = sessionStorage.getItem('players');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) as Player[] : [];
   });
-  const [messages, setMessages] = useState<Array<{ type: string; text: string; from?: string }>>(() => {
+  const [messages, setMessages] = useState<GameMessage[]>(() => {
     const saved = sessionStorage.getItem('messages');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) as GameMessage[] : [];
   });
-  const [userInput, setUserInput] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [userInput, setUserInput] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const [currentPhase, setCurrentPhase] = useState<GamePhase>(GamePhase.WAITING);
-  const username = sessionStorage.getItem("username");
+  const username: string = sessionStorage.getItem("username") ?? "";
 
   // Save state to sessionStorage whenever it changes
   useEffect(() => {
@@ -66,7 +67,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     socket.emit("get-game-state", { lobbyCode });
 
     // Listen for game state updates
-    socket.on("game-state", (data) => {
+    socket.on("game-state", (data: GameState) => {
       setGameData(data);
       if (data.phase) {
         setCurrentPhase(data.phase);
@@ -74,7 +75,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for player updates
-    socket.on("player-list", (data) => {
+    socket.on("player-list", (data: Player[] | { players: Player[] }) => {
       if (Array.isArray(data)) {
         setPlayers(data);
       } else if (data.players) {
@@ -83,17 +84,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for new messages/prompts
-    socket.on("game-message", (message) => {
+    socket.on("game-message", (message: GameMessage) => {
       setMessages((prev) => [...prev, message]);
     });
 
     // Listen for errors
-    socket.on("game-error", (error) => {
-      setErrorMessage(error.message);
+    socket.on("game-error", (error: ErrorData) => {
+      setErrorMessage(error.message || "An error occurred.");
     });
 
     // Listen for game start
-    socket.on("game-started", (data) => {
+    socket.on("game-started", (data: { phase: GamePhase; message: string }) => {
       setCurrentPhase(data.phase);
       setMessages((prev) => [
         ...prev,
@@ -105,7 +106,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for phase changes
-    socket.on("phase-change", (data) => {
+    socket.on("phase-change", (data: { phase: GamePhase; message: string }) => {
       setCurrentPhase(data.phase);
       setMessages((prev) => [
         ...prev,
@@ -117,7 +118,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for team and operation events
-    socket.on("team-assignment", (data) => {
+    socket.on("team-assignment", (data: { phase: GamePhase }) => {
       if (data.phase) {
         setCurrentPhase(data.phase);
       }
@@ -141,7 +142,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
-    socket.on("player-voted", (data) => {
+    socket.on("player-voted", (data: { username: string }) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -151,7 +152,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
-    socket.on("vote-submitted", (data) => {
+    socket.on("vote-submitted", (data: { vote: string }) => {
       setMessages((prev) => [
         ...prev,
         {
