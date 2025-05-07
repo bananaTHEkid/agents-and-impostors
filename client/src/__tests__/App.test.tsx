@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../App';
 import { mockSocket, triggerSocketEvent } from './setup';
 import { SocketProvider } from '../contexts/SocketContext';
+import { SocketEventData } from '../types/index';
 
 describe('App Component', () => {
   beforeEach(() => {
@@ -130,16 +131,16 @@ describe('App Component', () => {
     });
 
     // Mock socket events
-    const mockEvents = {
+    const mockEvents: Record<string, SocketEventData> = {
       'team-assignment': { team: 'agent' },
       'operation-assigned': { operation: 'secret_agent' },
       'operation-phase-complete': {},
       'vote-submitted': { username: 'player1' },
-      'game-results': { 
+      'game-results': {
         results: [
           { username: 'testUser', team: 'agent', win_status: 'won' },
           { username: 'player2', team: 'impostor', win_status: 'lost' }
-        ] 
+        ]
       },
       'error': { message: 'Test error' },
       'player-joined': { username: 'newPlayer' }

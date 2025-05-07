@@ -54,8 +54,11 @@ export interface GameResultsData {
   results: GameState["results"];
 }
 
+// Updated the PlayerJoinedData interface to ensure compatibility with SocketEventData.
 export interface PlayerJoinedData {
   username: string;
+  id?: string; // Optional ID field for player identification
+  [key: string]: unknown; // Index signature for additional properties
 }
 
 export interface JoinSuccessData {
@@ -64,4 +67,19 @@ export interface JoinSuccessData {
 
 export interface ErrorData {
   message?: string;
+}
+
+export interface SocketEventData {
+  team?: string;
+  operation?: string;
+  username?: string;
+  results?: Array<{
+    username: string;
+    team: string;
+    win_status: string;
+    isHost?: boolean;
+    id?: string;
+  }>;
+  message?: string;
+  [key: string]: unknown; // Index signature for additional properties
 }

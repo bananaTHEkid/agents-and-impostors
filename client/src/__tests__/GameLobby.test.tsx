@@ -22,9 +22,9 @@ describe('GameLobby Component', () => {
   it('displays player list when players join', async () => {
     render(<GameLobby {...mockProps} />);
     
-    // Use triggerSocketEvent with player data including ID
+    // Use triggerSocketEvent with player data including ID and isHost
     await act(async () => {
-      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1' });
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: "false" });
     });
 
     // Wait for player list to update
@@ -84,7 +84,7 @@ describe('GameLobby Component', () => {
     
     // First add a player
     await act(async () => {
-      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1' });
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: "false" });
     });
     
     // Wait for player to appear
@@ -120,13 +120,13 @@ describe('GameLobby Component', () => {
   it('updates player list when receiving player-list event', async () => {
     render(<GameLobby {...mockProps} />);
 
-    // Use triggerSocketEvent with correct player format including IDs
+    // Use triggerSocketEvent with correct player format including IDs and isHost
     await act(async () => {
       await triggerSocketEvent('player-list', { 
         players: [
-          { username: 'player1', id: 'player-1' }, 
-          { username: 'player2', id: 'player-2' }, 
-          { username: 'player3', id: 'player-3' }
+          { username: 'player1', id: 'player-1', isHost: false }, 
+          { username: 'player2', id: 'player-2', isHost: false }, 
+          { username: 'player3', id: 'player-3', isHost: false }
         ] 
       });
     });

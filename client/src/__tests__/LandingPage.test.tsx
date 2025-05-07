@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LandingPage from '../components/LandingPage';
@@ -18,24 +18,32 @@ describe('LandingPage', () => {
 
     // Mock storage setup
     const storageMock = {
-      getItem: vi.fn(),
-      setItem: vi.fn(),
-      clear: vi.fn()
+      getItem: vi.fn() as (key: string) => string | null,
+      setItem: vi.fn() as (key: string, value: string) => void,
+      clear: vi.fn() as () => void,
+      removeItem: vi.fn() as (key: string) => void,
+      key: vi.fn() as (index: number) => string | null,
+      length: 0
     };
     Object.defineProperty(window, 'sessionStorage', { value: storageMock });
     Object.defineProperty(window, 'localStorage', { value: storageMock });
 
-    // Set up storage mocks
-    vi.mocked(localStorage.getItem).mockImplementation((key: string) => {
+    // Ensure getItem is a mock before using .mockImplementation
+    window.localStorage.getItem = vi.fn((key: string) => {
       if (key === 'lastUsername') return null;
       if (key === 'recentGames') return null;
       return null;
     });
 
-    // Reset the socket emit mock with default behavior
-    mockSocket.emit.mockImplementation((_event, data, callback) => {
+    // Ensure mockSocket.emit is a mock before using .mockImplementation
+    mockSocket.emit = vi.fn().mockImplementation((
+      _event: string,
+      data: unknown,
+      callback?: (result: unknown) => void
+    ) => {
       if (callback) {
-        callback({ success: true, lobbyCode: data.lobbyCode });
+        const typedData = data as { lobbyCode: string };
+        callback({ success: true, lobbyCode: typedData.lobbyCode });
       }
       return mockSocket;
     });
@@ -43,7 +51,7 @@ describe('LandingPage', () => {
 
   it('should create a lobby successfully', async () => {
     // Mock successful lobby creation response
-    (axios.post as Mock).mockResolvedValue({
+    const axiosPostSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: {
         lobbyId: '123',
         lobbyCode: 'ABC123',
@@ -65,8 +73,8 @@ describe('LandingPage', () => {
 
     await waitFor(() => {
       expect(mockOnJoinGame).toHaveBeenCalledWith('ABC123');
-
     });
+    axiosPostSpy.mockRestore();
   });
 
   it('should show error message when username is empty', async () => {
@@ -88,7 +96,7 @@ describe('LandingPage', () => {
 
   it('should handle API error when creating lobby', async () => {
     // Mock API error
-    (axios.post as Mock).mockRejectedValueOnce(new Error('Failed to create lobby'));
+    const axiosPostSpy = vi.spyOn(axios, 'post').mockRejectedValueOnce(new Error('Failed to create lobby'));
 
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
@@ -113,6 +121,7 @@ describe('LandingPage', () => {
 
     // Verify onJoinGame was not called
     expect(mockOnJoinGame).not.toHaveBeenCalled();
+    axiosPostSpy.mockRestore();
   });
 
   it('should join an existing lobby successfully', async () => {
@@ -131,10 +140,12 @@ describe('LandingPage', () => {
   });
 
   it('should handle socket error when joining lobby', async () => {
+    mockSocket.emit = vi.fn();
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
-    mockSocket.emit.mockImplementation((event, _data, callback) => {
-      if (event === 'join-lobby' && callback) {
+
+    (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
+      if (typeof event === 'string' && event === 'join-lobby' && callback) {
         callback({ success: false, error: 'Lobby not found' });
       }
       return mockSocket;
@@ -182,6 +193,7 @@ describe('LandingPage', () => {
   });
 
   it('should disable inputs and buttons while loading', async () => {
+    mockSocket.emit = vi.fn();
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
     const user = userEvent.setup();
@@ -193,7 +205,7 @@ describe('LandingPage', () => {
     const createButton = screen.getByRole('button', { name: /create new game/i });
 
     // Mock socket emit with a delayed callback to simulate async behavior
-    mockSocket.emit.mockImplementation((_event, _data, callback) => {
+    (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
       if (callback) {
         setTimeout(() => {
           callback({ success: true, lobbyCode: 'ABC123' });
@@ -266,6 +278,7 @@ describe('LandingPage', () => {
   });
 
   it('should handle special characters in username and lobby code', async () => {
+    mockSocket.emit = vi.fn();
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
     const user = userEvent.setup();
@@ -316,6 +329,7 @@ describe('LandingPage', () => {
     });
 
     it('should join successfully with valid lobby code', async () => {
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -331,7 +345,7 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementation((_event, _data, callback) => {
+      (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
         if (callback) {
           callback({ success: true, lobbyCode: 'ABC123' });
         }
@@ -361,6 +375,7 @@ describe('LandingPage', () => {
     });
 
     it('should handle network error when joining lobby', async () => {
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -375,7 +390,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit to simulate network error
-      mockSocket.emit.mockImplementation((_event, _data, callback) => {
+
+      (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
         if (callback) {
           callback({ success: false, error: 'Failed to connect to server' });
         }
@@ -398,6 +414,7 @@ describe('LandingPage', () => {
     });
 
     it('should handle non-existent lobby code', async () => {
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -412,7 +429,8 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementation((_event, _data, callback) => {
+
+      (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
         if (callback) {
           callback({ success: false, error: 'Lobby does not exist' });
         }
@@ -435,6 +453,7 @@ describe('LandingPage', () => {
     });
 
     it('should handle lobby already started', async () => {
+      mockSocket.emit = vi.fn();
       const user = userEvent.setup();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
@@ -449,7 +468,7 @@ describe('LandingPage', () => {
       });
 
       // Setup mock emit specific for this test
-      mockSocket.emit.mockImplementationOnce((_event, _data, callback) => {
+      (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementationOnce((_event, _data, callback) => {
         if (callback) {
           callback({ success: false, error: 'Game has already started' });
         }
@@ -482,6 +501,7 @@ describe('LandingPage', () => {
     });
 
     it('should handle lobby being full', async () => {
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -504,7 +524,8 @@ describe('LandingPage', () => {
       expect(screen.getByText('Lobby is full')).toBeInTheDocument();
     });
 
-    it('should handle network error when joining lobby', async () => {
+    it('should handle network error when joining lobby (duplicate)', async () => {
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -518,7 +539,8 @@ describe('LandingPage', () => {
       });
 
       // Mock socket emit to simulate network error
-      mockSocket.emit.mockImplementation((_event, _data, callback) => {
+
+      (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
         if (callback) {
           callback({ success: false, error: 'Failed to connect to server' });
         }
@@ -577,6 +599,7 @@ describe('LandingPage', () => {
       vi.clearAllMocks();
       const { unmount } = render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
+      mockSocket.emit = vi.fn();
       render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
       const user = userEvent.setup();
@@ -636,7 +659,7 @@ describe('LandingPage', () => {
     const mockRecentGames = [
       { code: 'RECENT123', timestamp: Date.now() }
     ];
-    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+    window.localStorage.getItem = vi.fn((key: string) => {
       if (key === 'recentGames') return JSON.stringify(mockRecentGames);
       if (key === 'lastUsername') return 'PreviousUser';
       return null;
@@ -660,7 +683,7 @@ describe('LandingPage', () => {
     vi.clearAllMocks();
 
     // Mock localStorage to return a username
-    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+    window.localStorage.getItem = vi.fn((key: string) => {
       if (key === 'lastUsername') return 'SavedUsername';
       return null;
     });

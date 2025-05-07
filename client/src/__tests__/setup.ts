@@ -1,13 +1,8 @@
 import '@testing-library/jest-dom';
 import { vi, beforeEach } from 'vitest';
 import React from 'react';
+import { SocketEventData } from '../types/index';
 
-// Interfaces & Typen
-interface SocketEventData {
-  username?: string;
-  lobbyCode?: string;
-  [key: string]: string | undefined;
-}
 
 type SocketEventCallback = (data: SocketEventData) => void;
 
@@ -31,11 +26,11 @@ const onHandler = (event: string, callback: SocketEventCallback): SocketEventCal
 
 // Mock-Socket-Objekt
 interface MockSocket {
-  on: ReturnType<typeof vi.fn>;
-  off: ReturnType<typeof vi.fn>;
-  emit: ReturnType<typeof vi.fn>;
-  connect: ReturnType<typeof vi.fn>;
-  disconnect: ReturnType<typeof vi.fn>;
+  on: (event: string, callback: SocketEventCallback) => void;
+  off: (...args: unknown[]) => void;
+  emit: (event: string, data: SocketEventData, callback?: EmitCallback) => MockSocket;
+  connect: () => void;
+  disconnect: () => void;
   connected: boolean;
   id: string;
 }
@@ -48,7 +43,7 @@ export const mockSocket: MockSocket = {
       eventHandlers[event].forEach(handler => handler(data));
     }
     if (callback && typeof callback === 'function') {
-      callback({ success: true, lobbyCode: data.lobbyCode ?? undefined });
+      callback({ success: true, lobbyCode: typeof data.lobbyCode === 'string' ? data.lobbyCode : undefined });
     }
     return mockSocket;
   }),
@@ -59,7 +54,7 @@ export const mockSocket: MockSocket = {
 };
 
 // Hilfsfunktion zum Auslösen von Events in Tests
-export const triggerSocketEvent = async (event: string, data: SocketEventData): Promise<void> => {
+export const triggerSocketEvent = async (event: string, data: SocketEventData): Promise<void> =>{
   console.log(`Triggering event: ${event}`, data);
   const handlers = eventHandlers[event];
   if (!handlers || handlers.length === 0) {
