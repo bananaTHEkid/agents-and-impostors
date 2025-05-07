@@ -7,6 +7,8 @@ import { CardContent } from "../components/ui/card"; // Shadcn card
 import { Input } from "../components/ui/input"; // Shadcn input
 import { Label } from "../components/ui/label"; // Shadcn label
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"; // Shadcn alert
+import { API_BASE_URL } from "@/config";
+
 
 interface JoinSuccessData {
   lobbyCode: string;
@@ -63,7 +65,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io("http://localhost:5001");
+    const newSocket = io(API_BASE_URL);
     console.log("Socket connecting...");
 
     newSocket.on("connect", () => {
@@ -206,7 +208,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     setErrorMessage("");
 
     try {
-      const response = await axios.post<CreateLobbyResponse>("http://localhost:5001/create-lobby", {
+      const response = await axios.post<CreateLobbyResponse>(`${API_BASE_URL}/create-lobby`, {
         username: trimmedUsername,
       });
       const { lobbyCode } = response.data;

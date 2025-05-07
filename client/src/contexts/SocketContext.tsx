@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '@/config';
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
@@ -20,7 +21,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     // Only create a new socket if one doesn't exist
     if (!socketInstance) {
-      socketInstance = io("http://localhost:5001", {
+      socketInstance = io(API_BASE_URL, {
         transports: ['websocket'],
         upgrade: false,
         forceNew: false,
@@ -29,8 +30,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reconnectionDelay: 1000,
         timeout: 10000,
         auth: {
-          clientId: Date.now().toString()  // Add a unique client identifier
-        }
+          clientId: Date.now().toString(),  // Add a unique client identifier
+        },
       });
     }
 
