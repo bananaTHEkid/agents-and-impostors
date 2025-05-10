@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { io, Socket } from "socket.io-client";
-import { LandingPageProps } from "../types";
-import { Button } from "../components/ui/button"; // Shadcn button
-import { CardContent } from "../components/ui/card"; // Shadcn card
-import { Input } from "../components/ui/input"; // Shadcn input
-import { Label } from "../components/ui/label"; // Shadcn label
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"; // Shadcn alert
+import { LandingPageProps } from "@/types";
+import { Button } from "@/components/ui/button"; // Shadcn button
+import { CardContent } from "@/components/ui/card"; // Shadcn card
+import { Input } from "@/components/ui/input"; // Shadcn input
+import { Label } from "@/components/ui/label"; // Shadcn label
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Shadcn alert
 import { API_BASE_URL } from "@/config";
 
 interface JoinSuccessData {

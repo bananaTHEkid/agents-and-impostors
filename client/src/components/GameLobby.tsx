@@ -21,6 +21,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
   const [errorMessage, setErrorMessage] = useState("");
   const [copySuccess, setCopySuccess] = useState("");
   const [notification, setNotification] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   // Aktualisieren Sie die currentUsername-Deklaration am Anfang der Komponente:
   const currentUsername = sessionStorage.getItem("username") || ""; // Fallback zu leerem String
@@ -29,16 +30,16 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
   const isHost = useCallback((username: string) => {
     if (!username) return false; // Frühe Rückgabe, wenn kein Benutzername vorhanden
     
-    // Check if the username matches and either:
-    // 1. The player is marked as host in the player list
-    // 2. The sessionStorage has isHost set to "true" (fallback)
+    // First check if this user is in the players list and marked as host
     const isMarkedAsHost = players.some(player => 
       player.username === username && player.isHost
     );
     
-    const isHostInSession = sessionStorage.getItem("isHost") === "true";
+    // Only fall back to sessionStorage if we can't determine from the player list
+    // AND this is the current user
+    const isHostInSession = username === currentUsername && sessionStorage.getItem("isHost") === "true";
     
-    return isMarkedAsHost || (username === currentUsername && isHostInSession);
+    return isMarkedAsHost || isHostInSession;
   }, [players, currentUsername]);
 
 
@@ -181,22 +182,73 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
 
 
   const handleStartGame = useCallback(() => {
-    if (socket && players.length >= 2) {
-      socket.emit("start-game", { lobbyCode });
+    if (!socket) {
+      setErrorMessage("Keine Verbindung zum Server. Bitte lade die Seite neu.");
+      return;
     }
-  }, [socket, lobbyCode, players.length]);
+
+    if (players.length < 2) {
+      setErrorMessage("Mindestens 2 Spieler werden benötigt, um das Spiel zu starten.");
+      return;
+    }
+
+    if (!isHost(currentUsername)) {
+      setErrorMessage("Nur der Host kann das Spiel starten.");
+      return;
+    }
+
+    // Set up a timeout to ensure loading state is reset even if server doesn't respond
+    setIsLoading(true);
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+      setErrorMessage("Server antwortet nicht. Bitte versuche es später erneut.");
+    }, 5000); // 5 second timeout
+
+    socket.emit("start-game", { lobbyCode }, (response: { success: boolean, error?: string } | undefined) => {
+      clearTimeout(timeoutId); // Clear the timeout as we got a response
+      setIsLoading(false);
+
+      // If response is undefined, the server didn't provide a proper response
+      if (!response) {
+        setErrorMessage("Ungültige Antwort vom Server. Bitte versuche es später erneut.");
+        return;
+      }
+
+      if (!response.success) {
+        setErrorMessage(response.error || "Fehler beim Starten des Spiels.");
+      }
+    });
+  }, [socket, lobbyCode, players.length, currentUsername, isHost]);
 
   // In der handleLeaveLobby-Funktion:
   const handleLeaveLobby = useCallback(() => {
+    setIsLoading(true);
+
     if (socket && currentUsername) { // Zusätzliche Prüfung
       socket.emit("leave-lobby", {
         lobbyCode,
         username: currentUsername,
+      }, (response: { success: boolean, error?: string }) => {
+        setIsLoading(false);
+
+        // Even if there's an error, we should still exit the lobby in the UI
+        if (!response.success) {
+          console.error("Fehler beim Verlassen der Lobby:", response.error);
+        }
+
+        // Clear local session data
+        sessionStorage.removeItem("lobbyCode");
+
+        // Exit the lobby in the UI
+        onExitLobby();
       });
+    } else {
+      // If there's no socket or username, just exit
+      setIsLoading(false);
+      onExitLobby();
     }
-    onExitLobby();
   }, [socket, lobbyCode, currentUsername, onExitLobby]);
-  
+
   // Funktion zum Kopieren des Lobby-Codes
   const copyLobbyCode = useCallback(() => {
     navigator.clipboard
@@ -279,13 +331,13 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                   {players.length} {players.length === 1 ? 'Spieler' : 'Spieler'}
                 </span>
               </div>
-            
+
               {players.length === 0 && (
                 <div className="bg-yellow-50 text-yellow-800 p-4 rounded-lg mb-4">
                   <p className="text-center">Keine Spieler gefunden. Warte auf die Verbindung...</p>
                 </div>
               )}
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {players.map((player) => (
                     <div
@@ -311,7 +363,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                     </div>
                 ))}
               </div>
-              
+
               {/* Debug-Informationen (während der Entwicklung) */}
               {import.meta.env.DEV && (
                 <div className="mt-6 p-4 bg-gray-100 rounded-lg text-xs font-mono overflow-x-auto">
@@ -341,21 +393,46 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
               <Button
                   variant="outline-danger"
                   onClick={handleLeaveLobby}
+                  disabled={isLoading}
                   data-testid="exit-game-button"
                   className="flex items-center justify-center gap-2 py-3 px-6 text-base font-medium hover:bg-red-50 transition-colors duration-200"
               >
-                {FiLogOut({})} Lobby verlassen
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Verlasse...
+                  </>
+                ) : (
+                  <>
+                    {FiLogOut({})} Lobby verlassen
+                  </>
+                )}
               </Button>
 
               {isHost(currentUsername) && (
                   <Button
                       variant="success"
                       onClick={handleStartGame}
-                      disabled={players.length < 2}
+                      disabled={players.length < 2 || isLoading}
                       data-testid="start-game-button"
                       className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium bg-gradient-to-r from-green-500 to-emerald-500 border-0 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
                   >
-                    {FiPlay({})} Spiel starten
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Starte Spiel...
+                      </>
+                    ) : (
+                      <>
+                        {FiPlay({})} Spiel starten
+                      </>
+                    )}
                   </Button>
               )}
 
