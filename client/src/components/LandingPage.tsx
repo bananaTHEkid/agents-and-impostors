@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { io, Socket } from "socket.io-client";
 import { LandingPageProps } from "../types";
@@ -48,6 +48,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [, setShowGameRules] = useState(false);
 
+  const usernameRef = useRef(username);
+
+  useEffect(() => {
+    usernameRef.current = username;
+  }, [username]);
+
   const saveToRecentGames = useCallback(
     (code: string) => {
       setRecentGames((prevGames) => {
@@ -57,11 +63,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
         ].slice(0, 5); // Keep only 5 most recent
 
         localStorage.setItem("recentGames", JSON.stringify(updatedGames));
-        localStorage.setItem("lastUsername", username); // Save username for convenience
+        localStorage.setItem("lastUsername", usernameRef.current); // Save username for convenience
         return updatedGames;
       });
     },
-    [username] // Only depends on username
+    [] // Removed dependency on username
   );
 
   useEffect(() => {
@@ -98,7 +104,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     // Set up socket event listeners
     newSocket.on("join-success", (data: JoinSuccessData) => {
       console.log("Received join-success event:", data);
-      const currentUsername = username; // Capture the current username
+      const currentUsername = usernameRef.current; // Use ref to get the current username
       sessionStorage.setItem("lobbyCode", data.lobbyCode);
       sessionStorage.setItem("username", currentUsername);
       sessionStorage.setItem("isHost", "false");
@@ -118,7 +124,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       // You can handle the player list update here if needed
     });
 
-    // Request initial player list when joining a lobby
+    // Request initial player list only if a valid lobby code exists
     const lobbyCode = sessionStorage.getItem("lobbyCode");
     if (lobbyCode) {
       newSocket.emit(
@@ -133,6 +139,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
           }
         }
       );
+    } else {
+      console.warn("No valid lobby code found. Skipping player list request.");
     }
 
     // Load recent games from localStorage
@@ -150,7 +158,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     if (savedUsername) {
       setUsername(savedUsername);
     }
-    
 
     // Cleanup on unmount
     return () => {
@@ -163,8 +170,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       newSocket.off("reconnect_failed");
       newSocket.disconnect();
     };
-  }, [onJoinGame, saveToRecentGames, username]); // Include missing dependencies
-
+  }, [onJoinGame, saveToRecentGames]); // Removed dependency on username
 
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();
