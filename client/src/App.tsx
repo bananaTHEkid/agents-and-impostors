@@ -9,7 +9,8 @@ import {
   PlayerJoinedData,
   JoinSuccessData,
   ErrorData,
-  GamePhase
+  GamePhase,
+  PlayerRemovedData
 } from "./types";
 
 enum View {
@@ -50,6 +51,14 @@ const AppContent = () => {
     socket.on("operation-phase-complete", (data: MessageData) => {
       addMessage(data.message || "Operation phase completed.");
     });
+    
+    // Add handler for player kicked/removed events
+          socket.on("player-removed", (data: PlayerRemovedData) => {
+      addMessage(`${data.username} was removed from the game.`);
+      if (data.username === sessionStorage.getItem("username")) {
+        handleExitGame();
+      }
+    });
 
     socket.on("vote-submitted", (data: VoteData) => {
       addMessage(`Vote submitted by ${data.username}`);
@@ -57,10 +66,6 @@ const AppContent = () => {
 
     socket.on("game-results", (data: GameResultsData) => {
       addMessage(`Game results: ${JSON.stringify(data.results)}`);
-    });
-
-    socket.on("error", (error: ErrorData) => {
-      addMessage(`Error: ${error.message || "Unknown error"}`);
     });
 
     socket.on("player-joined", (data: PlayerJoinedData) => {
@@ -79,9 +84,11 @@ const AppContent = () => {
       socket.off("operation-phase-complete");
       socket.off("vote-submitted");
       socket.off("game-results");
+      socket.off("game-started");
       socket.off("error");
       socket.off("player-joined");
       socket.off("join-success");
+      socket.off("player-removed");
     };
   }, [socket]);
 
@@ -96,13 +103,22 @@ const AppContent = () => {
 
   const handleStartGame = () => {
     if (!socket) return;
-    socket.emit("start-game", { lobbyCode });
+    // Don't send socket.emit here - it's now handled in the GameLobby component
     setView(View.Game);
   };
-
+  
   const handleExitGame = () => {
+    // Clear all game-related data
     setView(View.Landing);
     setLobbyCode("");
+    
+    // Clear all relevant session storage
+    sessionStorage.removeItem("lobbyCode");
+    sessionStorage.removeItem("gameData");
+    sessionStorage.removeItem("players");
+    sessionStorage.removeItem("messages");
+    
+    console.log("Exited to landing page");
   };
 
   return (

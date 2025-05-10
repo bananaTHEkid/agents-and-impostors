@@ -15,7 +15,7 @@ const validatePlayerData = (player: unknown): player is Player => {
 
 
 
-const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
+const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGame }) => {
   const { socket } = useSocket();
   const [players, setPlayers] = useState<Player[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
@@ -124,7 +124,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
       });
       
       setNotification(`${data.username} ist der Lobby beigetreten`);
-      setTimeout(() => setNotification(""), 3000);
+      setTimeout(() => setNotification(""), 500);
       
       // Vollständige Spielerliste nach Beitritt anfordern
       // Kurze Verzögerung, um dem Server Zeit zum Aktualisieren zu geben
@@ -137,7 +137,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
       console.log("Spieler hat verlassen:", data);
       setPlayers(prev => prev.filter(player => player.username !== data.username));
       setNotification(`${data.username} hat die Lobby verlassen`);
-      setTimeout(() => setNotification(""), 3000);
+      setTimeout(() => setNotification(""), 500);
       
       // Aktualisierte Spielerliste anfordern
       setTimeout(() => {
@@ -216,35 +216,60 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
 
       if (!response.success) {
         setErrorMessage(response.error || "Fehler beim Starten des Spiels.");
-      }
-    });
-  }, [socket, lobbyCode, players.length, currentUsername, isHost]);
+          return;
+        }
+        
+        // If successful, call the onStartGame prop to transition to the game view
+        onStartGame();
+      });
+    }, [socket, lobbyCode, players.length, currentUsername, isHost, onStartGame]);
 
   // In der handleLeaveLobby-Funktion:
   const handleLeaveLobby = useCallback(() => {
     setIsLoading(true);
 
-    if (socket && currentUsername) { // Zusätzliche Prüfung
-      socket.emit("leave-lobby", {
-        lobbyCode,
-        username: currentUsername,
-      }, (response: { success: boolean, error?: string }) => {
+    // Set a timeout to force UI exit if server doesn't respond
+    const timeoutId = setTimeout(() => {
+      console.warn("Server response timeout when leaving lobby");
+      setIsLoading(false);
+      sessionStorage.removeItem("lobbyCode");
+      onExitLobby();
+    }, 500); // 0,5 second timeout
+  
+    if (socket && currentUsername) {
+      try {
+        socket.emit("leave-lobby", {
+          lobbyCode,
+          username: currentUsername,
+        }, (response: { success: boolean, error?: string } | undefined) => {
+          clearTimeout(timeoutId); // Clear timeout since we got a response
+          setIsLoading(false);
+  
+          // Handle case where server doesn't respond properly
+          if (!response) {
+            console.error("No response from server when leaving lobby");
+          } else if (!response.success) {
+            console.error("Error leaving lobby:", response.error);
+          }
+  
+          // Clear local session data
+          sessionStorage.removeItem("lobbyCode");
+          
+          // Always exit the lobby in the UI, regardless of server response
+          onExitLobby();
+        });
+      } catch (err) {
+        clearTimeout(timeoutId);
+        console.error("Exception when leaving lobby:", err);
         setIsLoading(false);
-
-        // Even if there's an error, we should still exit the lobby in the UI
-        if (!response.success) {
-          console.error("Fehler beim Verlassen der Lobby:", response.error);
-        }
-
-        // Clear local session data
         sessionStorage.removeItem("lobbyCode");
-
-        // Exit the lobby in the UI
         onExitLobby();
-      });
+      }
     } else {
       // If there's no socket or username, just exit
+      clearTimeout(timeoutId);
       setIsLoading(false);
+      sessionStorage.removeItem("lobbyCode");
       onExitLobby();
     }
   }, [socket, lobbyCode, currentUsername, onExitLobby]);
@@ -396,6 +421,11 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                   disabled={isLoading}
                   data-testid="exit-game-button"
                   className="flex items-center justify-center gap-2 py-3 px-6 text-base font-medium hover:bg-red-50 transition-colors duration-200"
+                  // Force navigation to landing if button is clicked multiple times
+                  onDoubleClick={() => {
+                    sessionStorage.removeItem("lobbyCode");
+                    onExitLobby();
+                  }}
               >
                 {isLoading ? (
                   <>

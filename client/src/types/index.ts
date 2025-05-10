@@ -12,8 +12,8 @@ export interface LandingPageProps {
 
 export interface GameLobbyProps {
   lobbyCode: string;
-  onStartGame: () => void;
-  onExitLobby: () => void;
+  onStartGame: () => void; // Callback to transition to game view when game starts
+  onExitLobby: () => void; // Callback to return to landing page when exiting lobby
 }
 
 export interface GameRoomProps {
@@ -67,6 +67,10 @@ export interface JoinSuccessData {
 
 export interface ErrorData {
   message?: string;
+}
+
+export interface PlayerRemovedData {
+  username: string;
 }
 
 export interface SocketEventData {
