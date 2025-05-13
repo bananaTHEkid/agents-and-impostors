@@ -61,7 +61,6 @@ const GAME_CONFIG = {
         {name: "infatuation", hidden: true},
         {name: "scapegoat", hidden: true},
         {name: "sleeper agent", hidden: true},
-        {name: "secret agent", hidden: true},
         {name: "secret intel", hidden: true},
         {name: "secret tip", hidden: true},
         {name: "confession", hidden: false},
@@ -81,17 +80,99 @@ const OPERATION_CONFIG: Record<
     }
 > = {
     "grudge": {
-        fields: [],
+        fields: [], // No input needed from the player for this version of grudge
         types: [],
-        generateInfo: () => null, // No extra info needed
-        modifyWinCondition: async () => {}, // No effect on win condition
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const selfTeam = teams[self];
+            // Safety check for player's team
+            if (!selfTeam) {
+                console.warn(`Player ${self} has no team assigned for grudge operation.`);
+                return { message: "Could not determine your grudge target due to missing team information." };
+            }
+
+            // Find players on opposing teams
+            const opponents = players.filter(p => p !== self && teams[p] && teams[p] !== selfTeam);
+
+            if (opponents.length === 0) {
+                // This could happen if all other players are on the same team, or in very small setups
+                return { message: "No specific grudge target could be identified from opposing teams." };
+            }
+
+            // Select a random opponent as the grudge target
+            const randomOpponent = opponents[Math.floor(Math.random() * opponents.length)];
+            
+            // The player with the grudge is informed who their target is.
+            // They can use this information strategically (e.g., in accusations, voting).
+            return {
+                grudgeTarget: randomOpponent,
+                message: `You have a grudge against ${randomOpponent}. You might want to focus your suspicions or actions towards them.`
+            };
+        },
+        modifyWinCondition: async () => {}, // No direct change to win conditions for this informational grudge.
+                                          // This could be expanded later if a grudge should have a mechanical impact on winning.
     },
     "infatuation": {
         fields: [],
         types: [],
-        // The player receiving this operation will win the game if the randomly generated player wins
-        generateInfo: () => null, // No extra info needed
-        modifyWinCondition: async () => {}, // No effect on win condition
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            // Filter out the current player to avoid self-infatuation
+            const otherPlayers = players.filter(p => p !== self);
+
+            if (otherPlayers.length === 0) {
+                return {
+                    message: "No valid target for infatuation found.",
+                    success: false
+                };
+            }
+
+            // Randomly select another player to be infatuated with
+            const infatuationTarget = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+
+            return {
+                infatuationTarget,
+                targetTeam: teams[infatuationTarget],
+                message: `You are infatuated with ${infatuationTarget}. Your fate is tied to theirs - you will win only if they win!`,
+                success: true
+            };
+        },
+        modifyWinCondition: async (
+            lobbyId: string,
+            players: string[],
+            votes: Record<string, string>,
+            teams: Record<string, string>,
+            db: any
+        ) => {
+            // Get all players with infatuation operation
+            const infatuatedPlayers = await db.all(
+                "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'infatuation'",
+                [lobbyId]
+            );
+
+            for (const player of infatuatedPlayers) {
+                if (!player.operation_info) continue;
+
+                try {
+                    const info = JSON.parse(player.operation_info);
+                    if (!info.success || !info.infatuationTarget) continue;
+
+                    // Get the target's win status
+                    const targetPlayer = await db.get(
+                        "SELECT win_status FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, info.infatuationTarget]
+                    );
+
+                    if (!targetPlayer) continue;
+
+                    // Update the infatuated player's win status to match their target's
+                    await db.run(
+                        "UPDATE players SET win_status = ? WHERE lobby_id = ? AND username = ?",
+                        [targetPlayer.win_status, lobbyId, player.username]
+                    );
+                } catch (error) {
+                    console.error(`Error processing infatuation for player ${player.username}:`, error);
+                }
+            }
+        }
     },
     "sleeper agent": {
         fields: [],
@@ -130,6 +211,7 @@ const OPERATION_CONFIG: Record<
         generateInfo: () => ({ secretCode: Math.floor(1000 + Math.random() * 9000) }), // 4-digit random code
         modifyWinCondition: async () => {}, // No effect on win condition
     },
+    // Make sure to define other operations like "scapegoat", "secret intel" etc., if they are used from GAME_CONFIG.OPERATIONS
 };
 
 // Initialize SQLite database
@@ -420,7 +502,7 @@ io.on("connection", (socket: Socket) => {
 
             // Get current game state
             const gameState = await db.get("SELECT status, round, total_rounds FROM lobbies WHERE id = ?", [lobby.id]);
-            const players = await db.all("SELECT username, team, operation, score FROM players WHERE lobby_id = ?", [lobby.id]);
+            const players = await db.all("SELECT username, team, operation FROM players WHERE lobby_id = ?", [lobby.id]);
             
             // Update socket mapping
             userSockets[username] = socket.id;
