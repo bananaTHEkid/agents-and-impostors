@@ -18,6 +18,7 @@ export const initDB = async (useMemory = false) => {
         await dbInstance.run("DROP TABLE IF EXISTS votes");
         await dbInstance.run("DROP TABLE IF EXISTS players");
         await dbInstance.run("DROP TABLE IF EXISTS lobbies");
+        await dbInstance.run("DROP TABLE IF EXISTS rounds");
 
         // Create tables
         await dbInstance.run(`
@@ -26,8 +27,19 @@ export const initDB = async (useMemory = false) => {
                 lobby_code TEXT UNIQUE,
                 status TEXT CHECK(status IN ('waiting', 'playing', 'completed')),
                 phase TEXT CHECK(phase IN ('waiting', 'team_assignment', 'operation_assignment', 'voting', 'completed')),
-                round INTEGER DEFAULT 1,
-                total_rounds INTEGER DEFAULT 1
+                current_round INTEGER DEFAULT 1,
+                total_rounds INTEGER DEFAULT 3
+            )
+        `);
+
+        await dbInstance.run(`
+            CREATE TABLE IF NOT EXISTS rounds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lobby_id TEXT,
+                round_number INTEGER,
+                winner TEXT,
+                completed BOOLEAN DEFAULT 0,
+                FOREIGN KEY (lobby_id) REFERENCES lobbies(id)
             )
         `);
 

@@ -1,18 +1,161 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import cors from "cors";
 import { initDB, getDB } from "./db/db";
 
-// Define types for better type safety
-// Add GamePhase enum to track game stages
 enum GamePhase {
   WAITING = 'waiting',
   TEAM_ASSIGNMENT = 'team_assignment',
   OPERATION_ASSIGNMENT = 'operation_assignment',
   VOTING = 'voting',
-  COMPLETED = 'completed'
 }
+
+interface RoundResult {
+    winner: 'agents' | 'impostors';
+    eliminatedPlayers: string[];
+    votes: Record<string, string>;
+    roundNumber: number;
+}
+
+interface FinalResults {
+    overallWinner: 'agents' | 'impostors';
+    roundResults: RoundResult[];
+    mvp: string;
+    totalRounds: number;
+    teamScores: {
+        agents: number;
+        impostors: number;
+    };
+}
+
+interface VoteValidationResult {
+    isValid: boolean;
+    error?: string;
+}
+
+async function updateLobbyPhase(lobbyId: string, phase: GamePhase) {
+    // Update in database
+    const dbInstance = getDB();
+    await dbInstance.run(
+        "UPDATE lobbies SET phase = ? WHERE id = ?",
+        [phase, lobbyId]
+    );
+
+    // Update in memory if lobby exists
+    if (lobbies[lobbyId]) {
+        lobbies[lobbyId].phase = phase;
+    }
+
+    return true;
+}
+
+async function validateVote(
+    lobbyId: string,
+    voter: string,
+    target: string
+): Promise<VoteValidationResult> {
+    const db = getDB();
+
+    try {
+        // Check if lobby is in voting phase
+        const lobby = await db.get(`
+            SELECT phase, current_round 
+            FROM lobbies 
+            WHERE id = ?
+        `, [lobbyId]);
+
+        if (!lobby) {
+            return {
+                isValid: false,
+                error: "Lobby not found"
+            };
+        }
+
+        if (lobby.phase !== 'voting') {
+            return {
+                isValid: false,
+                error: "Voting is not currently allowed"
+            };
+        }
+
+        // Check if voter exists and is not eliminated
+        const voterPlayer = await db.get(`
+            SELECT eliminated 
+            FROM players 
+            WHERE lobby_id = ? AND username = ?
+        `, [lobbyId, voter]);
+
+        if (!voterPlayer) {
+            return {
+                isValid: false,
+                error: "Voter not found in lobby"
+            };
+        }
+
+        if (voterPlayer.eliminated === 1) {
+            return {
+                isValid: false,
+                error: "Eliminated players cannot vote"
+            };
+        }
+
+        // Check if target exists
+        const targetPlayer = await db.get(`
+            SELECT eliminated 
+            FROM players 
+            WHERE lobby_id = ? AND username = ?
+        `, [lobbyId, target]);
+
+        if (!targetPlayer) {
+            return {
+                isValid: false,
+                error: "Target player not found in lobby"
+            };
+        }
+
+        // Prevent self-voting
+        if (voter === target) {
+            return {
+                isValid: false,
+                error: "You cannot vote for yourself"
+            };
+        }
+
+        // Check if player has already voted
+        const existingVote = await db.get(`
+            SELECT id 
+            FROM votes 
+            WHERE lobby_id = ? AND voter = ?
+        `, [lobbyId, voter]);
+
+        if (existingVote) {
+            return {
+                isValid: false,
+                error: "You have already voted this round"
+            };
+        }
+
+        // Check if target is eliminated
+        if (targetPlayer.eliminated === 1) {
+            return {
+                isValid: false,
+                error: "Cannot vote for an eliminated player"
+            };
+        }
+
+        return {
+            isValid: true
+        };
+    } catch (error) {
+        console.error("Error validating vote:", error);
+        return {
+            isValid: false,
+            error: "Internal server error during vote validation"
+        };
+    }
+}
+
 
 interface Lobby {
     lobbyCode: string;
@@ -48,6 +191,258 @@ const generateLobbyCode = (): string => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
+async function startNewRound(lobbyId: string, roundNumber: number) {
+    const db = getDB();
+
+    // Reset votes for the new round
+    await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+
+    // Reset player elimination status but keep their teams
+    await db.run(`
+        UPDATE players
+        SET eliminated = 0
+        WHERE lobby_id = ?
+    `, [lobbyId]);
+
+    // Update lobby phase
+    await db.run(`
+        UPDATE lobbies
+        SET phase = ?, current_round = ?
+        WHERE id = ?
+    `, ['team_assignment', roundNumber, lobbyId]);
+
+    // Create new round entry
+    await db.run(`
+        INSERT INTO rounds (lobby_id, round_number, completed)
+        VALUES (?, ?, 0)
+    `, [lobbyId, roundNumber]);
+
+    // Update in-memory state if lobby exists
+    if (lobbies[lobbyId]) {
+        lobbies[lobbyId].phase = GamePhase.TEAM_ASSIGNMENT;
+        // Update any other relevant state
+    }
+
+    return true;
+}
+async function calculateRoundResults(lobbyId: string): Promise<RoundResult> {
+    const db = getDB();
+
+    // Get current round number
+    const lobby = await db.get(`
+        SELECT current_round FROM lobbies WHERE id = ?
+    `, [lobbyId]);
+
+    // Get all active players and their teams
+    const players = await db.all(`
+        SELECT username, team 
+        FROM players 
+        WHERE lobby_id = ? AND eliminated = 0
+    `, [lobbyId]);
+
+    // Get all votes for this round
+    const votes = await db.all(`
+        SELECT voter, target 
+        FROM votes 
+        WHERE lobby_id = ?
+    `, [lobbyId]);
+
+    // Convert votes to Record format
+    const voteRecord: Record<string, string> = {};
+    votes.forEach(vote => {
+        voteRecord[vote.voter] = vote.target;
+    });
+
+    // Count votes for each player
+    const voteCounts: Record<string, number> = {};
+    players.forEach(player => {
+        voteCounts[player.username] = 0;
+    });
+    votes.forEach(vote => {
+        if (voteCounts[vote.target] !== undefined) {
+            voteCounts[vote.target]++;
+        }
+    });
+
+    // Find player(s) with most votes
+    const maxVotes = Math.max(...Object.values(voteCounts));
+    const eliminatedPlayers = Object.entries(voteCounts)
+        .filter(([_, count]) => count === maxVotes)
+        .map(([player]) => player);
+
+    // Update eliminated status in database
+    for (const player of eliminatedPlayers) {
+        await db.run(`
+            UPDATE players 
+            SET eliminated = 1 
+            WHERE lobby_id = ? AND username = ?
+        `, [lobbyId, player]);
+    }
+
+    // Count remaining players on each team
+    const remainingPlayers = players.filter(p => !eliminatedPlayers.includes(p.username));
+    const teamCounts = remainingPlayers.reduce((acc, player) => {
+        acc[player.team] = (acc[player.team] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    // Determine round winner
+    let winner: 'agents' | 'impostors';
+    if (teamCounts['impostor'] === 0) {
+        winner = 'agents';
+    } else if (teamCounts['agent'] <= teamCounts['impostor']) {
+        winner = 'impostors';
+    } else {
+        winner = 'agents';
+    }
+
+    await processSpecialOperations(lobbyId, {
+        winner,
+        eliminatedPlayers,
+        votes: voteRecord,
+        roundNumber: lobby.current_round
+    });
+
+
+    // Store round result
+    await db.run(`
+        UPDATE rounds 
+        SET winner = ?, completed = 1 
+        WHERE lobby_id = ? AND round_number = ?
+    `, [winner, lobbyId, lobby.current_round]);
+
+    return {
+        winner,
+        eliminatedPlayers,
+        votes: voteRecord,
+        roundNumber: lobby.current_round
+    };
+}
+
+async function calculateFinalResults(lobbyId: string): Promise<FinalResults> {
+    const db = getDB();
+
+    // Get all round results
+    const rounds = await db.all(`
+        SELECT round_number, winner 
+        FROM rounds 
+        WHERE lobby_id = ? 
+        ORDER BY round_number
+    `, [lobbyId]);
+
+    // Calculate team scores
+    const teamScores = {
+        agents: 0,
+        impostors: 0
+    };
+    rounds.forEach(round => {
+        if (round.winner === 'agents') teamScores.agents++;
+        if (round.winner === 'impostors') teamScores.impostors++;
+    });
+
+    // Get all players and their stats
+    const players = await db.all(`
+        SELECT p.username, p.team,
+               COUNT(v.target) as times_voted_out,
+               COUNT(CASE WHEN r.winner = p.team THEN 1 END) as rounds_won
+        FROM players p
+        LEFT JOIN votes v ON v.target = p.username
+        LEFT JOIN rounds r ON r.lobby_id = p.lobby_id
+        WHERE p.lobby_id = ?
+        GROUP BY p.username
+    `, [lobbyId]);
+
+    // Calculate MVP based on rounds won and times survived
+    const mvp = players.reduce((prev, current) => {
+        const prevScore = prev.rounds_won - prev.times_voted_out;
+        const currentScore = current.rounds_won - current.times_voted_out;
+        return currentScore > prevScore ? current : prev;
+    }).username;
+
+    // Get detailed round results
+    const roundResults = await Promise.all(rounds.map(async round => {
+        // Get votes for the round by joining with the rounds table
+        const votes = await db.all(`
+            SELECT v.voter, v.target
+            FROM votes v
+                     JOIN lobbies l ON l.id = v.lobby_id
+            WHERE v.lobby_id = ? AND l.current_round = ?
+        `, [lobbyId, round.round_number]);
+
+        const eliminatedPlayers = await db.all(`
+            SELECT username
+            FROM players
+            WHERE lobby_id = ? AND eliminated = 1
+        `, [lobbyId]);
+
+        return {
+            winner: round.winner as 'agents' | 'impostors',
+            eliminatedPlayers: eliminatedPlayers.map(p => p.username),
+            votes: votes.reduce((acc, vote) => {
+                acc[vote.voter] = vote.target;
+                return acc;
+            }, {} as Record<string, string>),
+            roundNumber: round.round_number
+        };
+
+    }));
+
+    return {
+        overallWinner: teamScores.agents > teamScores.impostors ? 'agents' : 'impostors',
+        roundResults,
+        mvp,
+        totalRounds: rounds.length,
+        teamScores
+    };
+}
+
+// Helper function to process special operations after voting
+async function processSpecialOperations(lobbyId: string, roundResult: RoundResult) {
+    const db = getDB();
+
+    // Get all players with special operations
+    const players = await db.all(`
+        SELECT username, operation, operation_info 
+        FROM players 
+        WHERE lobby_id = ? AND operation IS NOT NULL
+    `, [lobbyId]);
+
+    for (const player of players) {
+        // Only process operations that have modifyWinCondition defined
+        const operation = OPERATION_CONFIG[player.operation];
+        if (!operation?.modifyWinCondition) continue;
+
+        try {
+            // Get teams mapping for all players
+            const allPlayers = await db.all(`
+                SELECT username, team 
+                FROM players 
+                WHERE lobby_id = ?
+            `, [lobbyId]);
+
+            const teamsMap = allPlayers.reduce((acc, p) => {
+                acc[p.username] = p.team;
+                return acc;
+            }, {} as Record<string, string>);
+
+            // Call the operation's modifyWinCondition function with the correct parameters
+            await operation.modifyWinCondition(
+                lobbyId,
+                allPlayers.map(p => p.username),
+                roundResult.votes,
+                teamsMap,
+                db
+            );
+        } catch (error) {
+            console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
+        }
+    }
+
+}
+
+
+
+
 // Configuration object for game rules
 const GAME_CONFIG = {
     MIN_PLAYERS: 5,
@@ -68,6 +463,7 @@ const GAME_CONFIG = {
         {name: "old photographs", hidden: false},
         {name: "danish intelligence", hidden: false},
         {name: "anonymous tip", hidden: false},
+        {name: "defector", hidden: true},
     ]
 };
 
@@ -187,12 +583,6 @@ const OPERATION_CONFIG: Record<
         },
         modifyWinCondition: async () => {}, // No effect on win condition
     },
-    "secret agent": {
-        fields: ["information"],
-        types: ["string"],
-        generateInfo: () => null,
-        modifyWinCondition: async () => {}, // No effect on win condition
-    },
     "anonymous tip": {
         fields: ["message"],
         types: ["string"],
@@ -205,13 +595,178 @@ const OPERATION_CONFIG: Record<
         },
         modifyWinCondition: async () => {}, // No effect on win condition
     },
+    // choose two players, one player is an agent and one is an impostor
     "danish intelligence": {
-        fields: ["code"],
-        types: ["number"],
-        generateInfo: () => ({ secretCode: Math.floor(1000 + Math.random() * 9000) }), // 4-digit random code
-        modifyWinCondition: async () => {}, // No effect on win condition
+        fields: [],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            // Filter out the current player
+            const otherPlayers = players.filter(p => p !== self);
+
+            // Separate players into impostors and agents
+            const impostors = otherPlayers.filter(p => teams[p] === "impostor");
+            const agents = otherPlayers.filter(p => teams[p] === "agent");
+
+            // Check if we have enough players of each type
+            if (impostors.length === 0 || agents.length === 0) {
+                return {
+                    success: false,
+                    message: "Not enough players to generate intelligence information."
+                };
+            }
+
+            // Randomly select one impostor and one agent
+            const revealedImpostor = impostors[Math.floor(Math.random() * impostors.length)];
+            const revealedAgent = agents[Math.floor(Math.random() * agents.length)];
+
+            return {
+                success: true,
+                revealedImpostor,
+                revealedAgent,
+                message: `Your intelligence reveals that ${revealedImpostor} is an impostor and ${revealedAgent} is an agent.`
+            };
+        },
+        modifyWinCondition: async () => {
+            // Danish Intelligence doesn't modify win conditions
+            // It's purely an information-gathering operation
+        }
     },
-    // Make sure to define other operations like "scapegoat", "secret intel" etc., if they are used from GAME_CONFIG.OPERATIONS
+    // Make sure to define other operations like "scapegoat", "secret intel" etc., if they are used from GAME_CONFIG.OPERATION
+    // the receiver chooses one player who receives the team associated with the receiver of this operation
+    "confession": {
+        fields: ["targetPlayer"],
+        types: ["string"],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            // Filter out the current player
+            const possibleTargets = players.filter(p => p !== self);
+
+            return {
+                success: true,
+                message: "Choose a player to confess your team allegiance to.",
+                availablePlayers: possibleTargets,
+                myTeam: teams[self]
+            };
+        },
+        modifyWinCondition: async () => {
+            // Confession doesn't modify win conditions
+            return;
+        }
+    },
+    // the receiver recieves two names of players who work for the same team
+    "old photographs": {
+        fields: [],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            // Filter out the current player
+            const otherPlayers = players.filter(p => p !== self);
+
+            // Group players by their team
+            const teamGroups: Record<string, string[]> = {};
+            otherPlayers.forEach(player => {
+                const team = teams[player];
+                if (!teamGroups[team]) {
+                    teamGroups[team] = [];
+                }
+                teamGroups[team].push(player);
+            });
+
+            // Find a team that has at least 2 players
+            let selectedTeam: string | null = null;
+            let selectedPlayers: string[] = [];
+
+            for (const [team, players] of Object.entries(teamGroups)) {
+                if (players.length >= 2) {
+                    selectedTeam = team;
+                    // Randomly select 2 players from this team
+                    const shuffled = [...players].sort(() => Math.random() - 0.5);
+                    selectedPlayers = shuffled.slice(0, 2);
+                    break;
+                }
+            }
+
+            if (!selectedTeam || selectedPlayers.length < 2) {
+                return {
+                    success: false,
+                    message: "Not enough players on the same team to generate photographs."
+                };
+            }
+
+            return {
+                success: true,
+                revealedPlayers: selectedPlayers,
+                message: `Your old photographs show that ${selectedPlayers[0]} and ${selectedPlayers[1]} are on the same team.`
+            };
+        },
+        modifyWinCondition: async () => {
+            // Old Photographs doesn't modify win conditions
+            return;
+        }
+    },
+    "defector": {
+        fields: ["targetPlayer"],
+        types: ["string"],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            // Filter out the current player
+            const possibleTargets = players.filter(p => p !== self);
+
+            return {
+                success: true,
+                message: "Choose a player to convert to the opposite team.",
+                availablePlayers: possibleTargets
+            };
+        },
+        modifyWinCondition: async (
+            lobbyId: string,
+            players: string[],
+            votes: Record<string, string>,
+            teams: Record<string, string>,
+            db: any
+        ) => {
+            // Get all players with defector operation
+            const defectorPlayers = await db.all(
+                "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'defector'",
+                [lobbyId]
+            );
+
+            for (const player of defectorPlayers) {
+                if (!player.operation_info) continue;
+
+                try {
+                    const info = JSON.parse(player.operation_info);
+                    if (!info.targetPlayer || info.teamChanged) continue;
+
+                    // Get the target player's current team
+                    const targetPlayer = await db.get(
+                        "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, info.targetPlayer]
+                    );
+
+                    if (!targetPlayer) continue;
+
+                    // Switch the team (impostor <-> agent)
+                    const newTeam = targetPlayer.team === 'impostor' ? 'agent' : 'impostor';
+
+                    // Update the target player's team
+                    await db.run(
+                        "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
+                        [newTeam, lobbyId, info.targetPlayer]
+                    );
+
+                    // Mark the operation as completed
+                    await db.run(
+                        "UPDATE players SET operation_info = json_patch(operation_info, ?) WHERE lobby_id = ? AND username = ?",
+                        [JSON.stringify({ teamChanged: true }), lobbyId, player.username]
+                    );
+
+                    // Update the teams object to reflect the change
+                    teams[info.targetPlayer] = newTeam;
+
+                } catch (error) {
+                    console.error(`Error processing defector operation for player ${player.username}:`, error);
+                }
+            }
+        }
+    },
 };
 
 // Initialize SQLite database
@@ -237,7 +792,7 @@ app.use(cors({
 }));
 
 // More robust lobby creation
-app.post("/create-lobby", async (req: Request, res: Response, next: NextFunction) => {
+app.post("/create-lobby", async (req: Request, res: Response) => {
     try {
         const { username } = req.body;
         const dbInstance = getDB(); // Get the database instance safely
@@ -258,6 +813,8 @@ app.post("/create-lobby", async (req: Request, res: Response, next: NextFunction
         console.error("Fehler beim Erstellen der Lobby:", error);
         res.status(500).json({ error: 'Failed to create lobby' });
     }
+
+
 });
 
 // More comprehensive game start logic
@@ -300,10 +857,54 @@ const assignTeamsAndOperations = async (lobbyId: string, players: string[]) => {
     await generateOperationInfo(lobbyId, players, teams);
 
     // Notify players of their team (you might want to send this individually as well)
-    io.to(lobbyId).emit("team-assignment", { impostors, agents });
+    io.to(lobbyId).emit("team-assignment", {
+        impostors,
+        agents,
+        phase: GamePhase.OPERATION_ASSIGNMENT,
+        requiresAcknowledgment: true
+    });
+
 
     return { impostors, agents, playerOperations };
 };
+
+
+async function endRound(lobbyId: string, roundResult: RoundResult) {
+    const db = getDB();
+
+    // Update round results
+    await db.run(`
+        UPDATE rounds 
+        SET winner = ?, completed = 1 
+        WHERE lobby_id = ? AND round_number = (
+            SELECT current_round FROM lobbies WHERE id = ?
+        )
+    `, [roundResult.winner, lobbyId, lobbyId]);
+
+    // Get lobby information
+    const lobby = await db.get(`
+        SELECT current_round, total_rounds 
+        FROM lobbies 
+        WHERE id = ?
+    `, [lobbyId]);
+
+    if (!lobby) return false;
+
+    // Check if this was the final round
+    if (lobby.current_round >= lobby.total_rounds) {
+        await db.run(`
+            UPDATE lobbies 
+            SET status = 'completed', phase = 'completed' 
+            WHERE id = ?
+        `, [lobbyId]);
+        return 'game_end';
+    }
+
+    // Start next round
+    await startNewRound(lobbyId, lobby.current_round + 1);
+    return 'next_round';
+}
+
 
 const generateOperationInfo = async (lobbyId: string, players: string[], teams: Record<string, string>) => {
     const db = getDB();
@@ -337,138 +938,6 @@ const generateOperationInfo = async (lobbyId: string, players: string[], teams: 
             console.warn(`Socket-ID für Spieler ${player} nicht gefunden.`);
         }
     }
-};
-
-export const calculateWinConditions = async (lobbyId: string, votes: Record<string, string>) => {
-    const db = getDB();
-    const playersData = await db.all(
-        "SELECT username, team, operation, operation_info FROM players WHERE lobby_id = ?",
-        [lobbyId]
-    );
-
-    // Create teams lookup for easier access
-    const teams: Record<string, string> = {};
-    for (const player of playersData) {
-        teams[player.username] = player.team;
-    }
-
-    // Count votes to determine the most voted player
-    const voteCount: Record<string, number> = {};
-    for (const target of Object.values(votes)) {
-        if (target === "eliminated") continue;
-        voteCount[target] = (voteCount[target] || 0) + 1;
-    }
-
-    // Find the most voted player
-    let mostVotedPlayer = null;
-    let highestVotes = 0;
-
-    for (const [player, count] of Object.entries(voteCount)) {
-        if (count > highestVotes) {
-            highestVotes = count;
-            mostVotedPlayer = player;
-        } else if (count === highestVotes && count > 0) {
-            // Tie - indecisive vote
-            mostVotedPlayer = null;
-        }
-    }
-
-    // Determine base win condition
-    let winningTeam: string;
-    if (mostVotedPlayer && teams[mostVotedPlayer] === "impostor") {
-        // Agents win if an impostor is eliminated
-        winningTeam = "agent";
-    } else {
-        // Impostors win if vote is indecisive or an agent is eliminated
-        winningTeam = "impostor";
-    }
-
-    // Set default win statuses based on team results
-    await db.run("UPDATE players SET win_status = 'lost' WHERE lobby_id = ?", [lobbyId]);
-    await db.run(
-        "UPDATE players SET win_status = 'won' WHERE team = ? AND lobby_id = ?",
-        [winningTeam, lobbyId]
-    );
-
-    // Process special operations that modify win conditions
-    for (const player of playersData) {
-        const username = player.username;
-        let operationInfo = null;
-
-        // Parse operation info if exists
-        if (player.operation_info) {
-            try {
-                operationInfo = JSON.parse(player.operation_info);
-            } catch (e) {
-                console.error(`Failed to parse operation info for ${username}`);
-            }
-        }
-
-        // Handle special operations
-        switch (player.operation) {
-            case "grudge":
-                // Player with grudge wins if their target is eliminated
-                if (operationInfo && operationInfo.targetPlayer === mostVotedPlayer) {
-                    await db.run(
-                        "UPDATE players SET win_status = 'won' WHERE username = ? AND lobby_id = ?",
-                        [username, lobbyId]
-                    );
-                }
-                break;
-
-            case "infatuation":
-                // Player with infatuation wins if their target wins
-                if (operationInfo && operationInfo.targetPlayer) {
-                    const targetTeam = teams[operationInfo.targetPlayer];
-                    if (targetTeam === winningTeam) {
-                        await db.run(
-                            "UPDATE players SET win_status = 'won' WHERE username = ? AND lobby_id = ?",
-                            [username, lobbyId]
-                        );
-                    }
-                }
-                break;
-
-            case "sleeper agent":
-                // Player is actually on the opposite team
-                const actualTeam = player.team === "agent" ? "impostor" : "agent";
-                if (actualTeam === winningTeam) {
-                    await db.run(
-                        "UPDATE players SET win_status = 'won' WHERE username = ? AND lobby_id = ?",
-                        [username, lobbyId]
-                    );
-                } else {
-                    await db.run(
-                        "UPDATE players SET win_status = 'lost' WHERE username = ? AND lobby_id = ?",
-                        [username, lobbyId]
-                    );
-                }
-                break;
-
-            case "scapegoat":
-                // Player wins if they are eliminated
-                if (username === mostVotedPlayer) {
-                    await db.run(
-                        "UPDATE players SET win_status = 'won' WHERE username = ? AND lobby_id = ?",
-                        [username, lobbyId]
-                    );
-                }
-                break;
-        }
-    }
-
-    // Get final results to send to clients
-    const finalResults = await db.all(
-        "SELECT username, team, operation, win_status FROM players WHERE lobby_id = ?",
-        [lobbyId]
-    );
-
-    // Notify all players of the game results
-    io.to(lobbyId).emit("game-results", {
-        results: finalResults,
-        mostVotedPlayer,
-        winningTeam
-    });
 };
 
 
@@ -543,8 +1012,11 @@ io.on("connection", (socket: Socket) => {
                 return;
             }
 
+
+
             const dbInstance = getDB();
             const lobby = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
+
 
             if (!lobby) {
                 if (callback) {
@@ -557,6 +1029,16 @@ io.on("connection", (socket: Socket) => {
             }
 
             const [lobbyId, lobbyData] = lobby;
+
+            if (lobbyData.players.length >= GAME_CONFIG.MAX_PLAYERS) {
+                if (callback) {
+                    callback({
+                        success: false,
+                        error: `Lobby is full. Maximum ${GAME_CONFIG.MAX_PLAYERS} players allowed.`
+                    });
+                }
+                return;
+            }
 
             if (lobbyData.status !== "waiting") {
                 if (callback) {
@@ -641,7 +1123,7 @@ io.on("connection", (socket: Socket) => {
     });
 
     // Handle game start logic
-    socket.on("start-game", async ({ lobbyCode }) => {
+    socket.on("start-game", async ({ lobbyCode, rounds = 3 }) => {
         try {
             const dbInstance = getDB();
             const lobbyEntry = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
@@ -667,7 +1149,17 @@ io.on("connection", (socket: Socket) => {
             // Start game with first phase: TEAM_ASSIGNMENT
             lobbyData.status = "playing";
             lobbyData.phase = GamePhase.TEAM_ASSIGNMENT;
-            
+
+
+            await dbInstance.run(`
+                UPDATE lobbies 
+                SET total_rounds = ?, current_round = 1 
+                WHERE id = ?
+            `, [rounds, lobbyId]);
+
+            await startNewRound(lobbyId, 1);
+
+
             await dbInstance.run(
                 "UPDATE lobbies SET status = ?, phase = ? WHERE id = ?",
                 ["playing", GamePhase.TEAM_ASSIGNMENT, lobbyId]
@@ -759,6 +1251,47 @@ io.on("connection", (socket: Socket) => {
         }
     });
 
+    socket.on("use-confession", async ({ targetPlayer, lobbyId }) => {
+        try {
+            const db = getDB();
+            const confessor = await db.get(
+                "SELECT username, team FROM players WHERE lobby_id = ? AND operation = 'confession'",
+                [lobbyId]
+            );
+
+            if (!confessor) {
+                socket.emit("error", { message: "Invalid confession operation" });
+                return;
+            }
+
+            // Update the target player's operation_info with the confession
+            const confessionInfo = {
+                type: "received_confession",
+                fromPlayer: confessor.username,
+                theirTeam: confessor.team
+            };
+
+            await db.run(
+                "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+                [JSON.stringify(confessionInfo), lobbyId, targetPlayer]
+            );
+
+            // Mark the confession as used
+            await db.run(
+                "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+                [JSON.stringify({ confessionMade: true, targetPlayer }), lobbyId, confessor.username]
+            );
+
+            // Notify relevant players
+            socket.to(targetPlayer).emit("confession-received", confessionInfo);
+            socket.emit("operation-used", { success: true });
+
+        } catch (error) {
+            console.error("Error processing confession:", error);
+            socket.emit("error", { message: "Failed to process confession" });
+        }
+    });
+
     socket.on("submit-vote", async ({ lobbyCode, username, vote }) => {
         try {
             const dbInstance = getDB();
@@ -769,76 +1302,70 @@ io.on("connection", (socket: Socket) => {
             }
             const [lobbyId, lobbyData] = lobbyEntry;
 
+            const validation = await validateVote(lobbyId, username, vote);
+
+            if (!validation.isValid) {
+                socket.emit("error", { message: validation.error });
+                return;
+            }
+
             // Check if the game is in the voting phase
             if (lobbyData.phase !== GamePhase.VOTING) {
                 throw new Error("Voting is not currently allowed - not in voting phase");
             }
 
-            // Store the vote in the database
+            // Record the vote (only do this once!)
             await dbInstance.run(
                 "INSERT INTO votes (lobby_id, voter, target) VALUES (?, ?, ?)",
                 [lobbyId, username, vote]
             );
 
-            // Notify other players about the vote
+            // Notify clients about the vote
             socket.emit("vote-submitted", { username, vote });
             socket.to(lobbyId).emit("player-voted", { username });
 
-            // Check if all players have voted
-            const allPlayers = lobbyData.players.length;
-            const votesCast = await dbInstance.all(
-                "SELECT * FROM votes WHERE lobby_id = ?",
-                [lobbyId]
-            );
+            // Check if all active players have voted
+            const [activePlayers, submittedVotes] = await Promise.all([
+                dbInstance.all(`
+                SELECT COUNT(*) as count 
+                FROM players 
+                WHERE lobby_id = ? AND eliminated = 0
+            `, [lobbyId]),
+                dbInstance.all(`
+                SELECT COUNT(*) as count 
+                FROM votes 
+                WHERE lobby_id = ?
+            `, [lobbyId])
+            ]);
 
-            // If all votes are in, tally the votes and determine the outcome
-            if (votesCast.length >= allPlayers) {
-                // Compile all votes into a single object for calculation
-                const votesMap: Record<string, string> = {};
-                for (const v of votesCast) {
-                    votesMap[v.voter] = v.target;
+            // If all players have voted, trigger results calculation
+            if (activePlayers[0].count === submittedVotes[0].count) {
+                const roundResult = await calculateRoundResults(lobbyId);
+                io.to(lobbyId).emit("voting-complete", roundResult);
+
+                // End round and get next action
+                const nextAction = await endRound(lobbyId, roundResult);
+
+                // Update lobby data for next steps
+                const lobby = await dbInstance.get("SELECT * FROM lobbies WHERE id = ?", [lobbyId]);
+
+                if (nextAction === 'game_end') {
+                    // Emit final game results
+                    io.to(lobbyId).emit("game-end", await calculateFinalResults(lobbyId));
+                } else {
+                    // Emit round results and start next round
+                    io.to(lobbyId).emit("round-end", roundResult);
+                    // Use the current_round from the database, which was updated by startNewRound
+                    io.to(lobbyId).emit("round-start", {
+                        roundNumber: lobby.current_round
+                    });
                 }
-
-                // Calculate game results
-                await calculateWinConditions(lobbyId, votesMap);
-
-                // Update lobby phase to COMPLETED
-                lobbyData.phase = GamePhase.COMPLETED;
-                lobbyData.status = "completed";
-                
-                await dbInstance.run(
-                    "UPDATE lobbies SET status = ?, phase = ? WHERE id = ?",
-                    ["completed", GamePhase.COMPLETED, lobbyId]
-                );
-
-                // Get final results to send to clients
-                const finalResults = await dbInstance.all(
-                    "SELECT username, team, operation, win_status FROM players WHERE lobby_id = ?",
-                    [lobbyId]
-                );
-
-                // Notify all players of the game completion
-                io.to(lobbyId).emit("phase-change", {
-                    phase: GamePhase.COMPLETED,
-                    message: "Game completed. Results available!"
-                });
-
-                // Send game results to all players
-                io.to(lobbyId).emit("game-results", {
-                    results: finalResults,
-                    phase: GamePhase.COMPLETED
-                });
-
-                // Clear votes for a potential next game
-                await dbInstance.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
             }
-
         } catch (error) {
             console.error("Error processing vote:", error);
             socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
         }
     });
-
     socket.on("leave-lobby", async ({ lobbyCode, username }) => {
         try {
             const dbInstance = getDB();
@@ -851,18 +1378,25 @@ io.on("connection", (socket: Socket) => {
 
             lobbies[lobbyId].players = lobbyData.players.filter(player => player !== username);
             await dbInstance.run("DELETE FROM players WHERE username = ? AND lobby_id = ?", [username, lobbyId]);
-            delete userSockets[username];
+
+            // Clean up socket connections properly
+            const socketId = userSockets[username];
+            if (socketId) {
+                activeConnections.delete(socketId);
+                delete userSockets[username];
+            }
+
             socket.leave(lobbyId);
             io.to(lobbyId).emit("player-left", { username });
 
             if (lobbies[lobbyId].players.length === 0) {
                 delete lobbies[lobbyId];
                 await dbInstance.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
-                console.log(`Lobby ${lobbyId} geschlossen wegen Inaktivität.`);
+                console.log(`Lobby ${lobbyId} closed due to inactivity.`);
             }
 
         } catch (error) {
-            console.error("Fehler beim Verlassen der Lobby:", error);
+            console.error("Error leaving lobby:", error);
             socket.emit("error", error instanceof Error ? error.message : "Unknown error");
         }
     });
@@ -878,7 +1412,6 @@ io.on("connection", (socket: Socket) => {
 
     socket.on("get-lobby-players", async ({ lobbyCode }, callback) => {
         try {
-            const dbInstance = getDB();
             const lobby = Object.entries(lobbies).find(([_, data]) => data.lobbyCode === lobbyCode);
 
             if (!lobby) {
@@ -892,7 +1425,7 @@ io.on("connection", (socket: Socket) => {
             }
 
             const [lobbyId, lobbyData] = lobby;
-            
+
             if (callback) {
                 callback({ 
                     success: true,
@@ -918,7 +1451,7 @@ const HOST = process.env.SERVER_HOST || '0.0.0.0';
 export const startServer = async (port: number = parseInt(PORT.toString())) => {
   await initializeDatabase();
   return new Promise<void>((resolve) => {
-    const portNumber = typeof port === 'number' ? port : 5001;
+    const portNumber = port;
     server.listen(portNumber, HOST, () => {
       console.log(`Server running on ${HOST}:${portNumber}`);
       resolve();
