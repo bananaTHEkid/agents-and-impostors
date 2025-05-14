@@ -19,7 +19,7 @@ import {
   GameMessage,
 } from "@/types";
 import GameInfo from "./GameInfo";
-import { useSocket } from "@/contexts/SocketContext";
+import { useSocket } from '@/Socket/useSocket';
 import { FiLogOut, FiMessageCircle, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
 
 const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {

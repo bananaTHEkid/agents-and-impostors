@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { SocketProvider, useSocket } from "./contexts/SocketContext";
+import { SocketProvider} from "./contexts/SocketContext";
+import { useSocket } from '@/Socket/useSocket';
 import LandingPage from "./components/LandingPage";
 import GameLobby from "./components/GameLobby";
 import GameRoom from "./components/GameRoom";

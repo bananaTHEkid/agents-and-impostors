@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button, Alert } from "react-bootstrap";
-import { useSocket } from "@/contexts/SocketContext";
+import { useSocket } from '@/Socket/useSocket';
 import { GameLobbyProps, Player } from "@/types";
 import { FiCopy, FiLogOut, FiPlay, FiUsers } from "react-icons/fi";
 

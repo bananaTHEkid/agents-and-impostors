@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Badge, Alert } from 'react-bootstrap';
-import { useSocket } from '../contexts/SocketContext';
+import { useSocket } from '@/Socket/useSocket';
 import {
   OperationAssignedData,
   GameResultsData,

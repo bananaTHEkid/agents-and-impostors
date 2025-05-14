@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/config';
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 interface SocketContextType {
@@ -9,16 +9,15 @@ interface SocketContextType {
   disconnect: () => void;
 }
 
-const SocketContext = createContext<SocketContextType>({
+export const SocketContext = createContext<SocketContextType>({
   socket: null,
   isConnected: false,
   connect: () => {},
   disconnect: () => {},
 });
 
-export const useSocket = () => useContext(SocketContext);
-
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // The rest of the provider logic remains the same...
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -48,7 +47,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const connectWithBackoff = () => {
-    if (isConnecting || (socketRef.current?.connected)) return;
+    if (isConnecting || socketRef.current?.connected) return;
 
     setIsConnecting(true);
     const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000);
@@ -65,6 +64,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const initializeSocket = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      return; // Prevent initializing multiple connections
+    }
     try {
       if (socketRef.current) {
         socketRef.current.close();
@@ -122,12 +124,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   useEffect(() => {
-    if (!socketRef.current && !isConnecting) {
-      initializeSocket();
-    }
+    initializeSocket();
 
     return () => {
-      disconnect();
+      disconnect(); // Properly disconnect the socket
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.close();

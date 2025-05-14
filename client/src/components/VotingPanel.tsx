@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ListGroup, Button, Alert, Badge } from 'react-bootstrap';
-import { useSocket } from '@/contexts/SocketContext';
+import { useSocket } from '@/Socket/useSocket';
 import { Player } from '@/types';
 
 interface VotingPanelProps {
