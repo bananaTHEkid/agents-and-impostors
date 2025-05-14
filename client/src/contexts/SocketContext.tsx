@@ -1,6 +1,8 @@
 import { API_BASE_URL } from '@/config';
-import React, { createContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+
+
 
 interface SocketContextType {
   socket: Socket | null;
@@ -17,7 +19,6 @@ export const SocketContext = createContext<SocketContextType>({
 });
 
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // The rest of the provider logic remains the same...
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -25,48 +26,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const clearTimeouts = () => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = null;
-    }
-  };
+  const initializeSocket = useCallback(() => {
+    if (socketRef.current?.connected) return;
 
-  const disconnect = () => {
-    clearTimeouts();
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
-    setIsConnected(false);
-    setIsConnecting(false);
-    reconnectAttemptsRef.current = 0;
-  };
 
-  const connectWithBackoff = () => {
-    if (isConnecting || socketRef.current?.connected) return;
 
-    setIsConnecting(true);
-    const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000);
-
-    clearTimeouts();
-
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (socketRef.current && !socketRef.current.connected) {
-        console.log(`Reconnecting... Attempt ${reconnectAttemptsRef.current + 1}`);
-        reconnectAttemptsRef.current++;
-        initializeSocket();
-      }
-    }, delay);
-  };
-
-  const initializeSocket = () => {
-    if (socketRef.current && socketRef.current.connected) {
-      return; // Prevent initializing multiple connections
-    }
     try {
       if (socketRef.current) {
         socketRef.current.close();
@@ -75,7 +39,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       socketRef.current = io(API_BASE_URL, {
         transports: ['websocket'],
         upgrade: false,
-        forceNew: true,
+        forceNew: false,  // Changed to false
         reconnection: false,
         timeout: 10000,
         auth: {
@@ -121,21 +85,65 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setIsConnecting(false);
       connectWithBackoff();
     }
-  };
+
+
+  }, []);
+
+
 
   useEffect(() => {
     initializeSocket();
 
     return () => {
-      disconnect(); // Properly disconnect the socket
+      clearTimeouts();
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.close();
         socketRef.current = null;
       }
     };
-  }, []);
+  }, [initializeSocket]);
 
+  const clearTimeouts = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+  };
+
+  const disconnect = () => {
+    clearTimeouts();
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    setIsConnected(false);
+    setIsConnecting(false);
+    reconnectAttemptsRef.current = 0;
+  };
+
+  const connectWithBackoff = useCallback(() => {
+    if (isConnecting || socketRef.current?.connected) {
+      return;
+    }
+
+    setIsConnecting(true);
+    const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000);
+
+    clearTimeouts();
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (!socketRef.current?.connected) {
+        console.log(`Reconnecting... Attempt ${reconnectAttemptsRef.current + 1}`);
+        reconnectAttemptsRef.current++;
+        initializeSocket();
+      }
+    }, delay);
+  }, [isConnecting, initializeSocket]);
+  
   const contextValue = {
     socket: socketRef.current,
     isConnected,

@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'process.env': {
-        VITE_SERVER_URL: env.VITE_SERVER_URL || 'http://localhost:5001',
+        VITE_SERVER_URL: env.VITE_SERVER_URL || 'http://localhost:5000',
       },
     },
   };

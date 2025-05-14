@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { SocketProvider} from "./contexts/SocketContext";
-import { useSocket } from '@/Socket/useSocket';
+import { useSocket } from "@/Socket/useSocket";
 import LandingPage from "./components/LandingPage";
 import GameLobby from "./components/GameLobby";
 import GameRoom from "./components/GameRoom";
@@ -10,7 +9,7 @@ import {
   PlayerJoinedData,
   JoinSuccessData,
   GamePhase,
-  PlayerRemovedData
+  PlayerRemovedData,
 } from "./types";
 
 enum View {
@@ -40,6 +39,7 @@ const AppContent = () => {
   useEffect(() => {
     if (!socket) return;
 
+    // Socket listeners for various events
     socket.on("team-assignment", (data: TeamAssignmentData) => {
       addMessage(`Team assigned: ${data.team}`);
     });
@@ -51,9 +51,8 @@ const AppContent = () => {
     socket.on("operation-phase-complete", (data: MessageData) => {
       addMessage(data.message || "Operation phase completed.");
     });
-    
-    // Add handler for player kicked/removed events
-          socket.on("player-removed", (data: PlayerRemovedData) => {
+
+    socket.on("player-removed", (data: PlayerRemovedData) => {
       addMessage(`${data.username} was removed from the game.`);
       if (data.username === sessionStorage.getItem("username")) {
         handleExitGame();
@@ -78,22 +77,21 @@ const AppContent = () => {
       setView(View.Lobby);
     });
 
+    // Cleanup the listeners on component unmount
     return () => {
       socket.off("team-assignment");
       socket.off("operation-assigned");
       socket.off("operation-phase-complete");
+      socket.off("player-removed");
       socket.off("vote-submitted");
       socket.off("game-results");
-      socket.off("game-started");
-      socket.off("error");
       socket.off("player-joined");
       socket.off("join-success");
-      socket.off("player-removed");
     };
   }, [socket]);
 
   const addMessage = (msg: string) => {
-    console.log(msg); // Log messages instead of storing them
+    console.log(msg); // Simply log the messages received
   };
 
   const handleJoinGame = (code: string) => {
@@ -103,48 +101,46 @@ const AppContent = () => {
 
   const handleStartGame = () => {
     if (!socket) return;
-    // Don't send socket.emit here - it's now handled in the GameLobby component
+    // Only set the view here, as `start-game` logic happens in the GameLobby
     setView(View.Game);
   };
-  
+
   const handleExitGame = () => {
-    // Clear all game-related data
+    // Reset all state and session storage when leaving the game
     setView(View.Landing);
     setLobbyCode("");
-    
-    // Clear all relevant session storage
+
     sessionStorage.removeItem("lobbyCode");
     sessionStorage.removeItem("gameData");
     sessionStorage.removeItem("players");
     sessionStorage.removeItem("messages");
-    
+
     console.log("Exited to landing page");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-300 flex items-center justify-center">
-      {view === View.Landing && (
-        <LandingPage onJoinGame={handleJoinGame} />
-      )}
-      {view === View.Lobby && (
-        <GameLobby
-          lobbyCode={lobbyCode}
-          onStartGame={handleStartGame}
-          onExitLobby={handleExitGame}
-        />
-      )}
-      {view === View.Game && (
-        <GameRoom lobbyCode={lobbyCode} onExitGame={handleExitGame} />
-      )}
-    </div>
+      // Full-height, centered layout using Tailwind CSS
+      <div className="w-full h-screen bg-gradient-to-br from-gray-100 to-gray-300 flex items-center justify-center">
+        {view === View.Landing && (
+            <LandingPage onJoinGame={handleJoinGame} />
+        )}
+        {view === View.Lobby && (
+            <GameLobby
+                lobbyCode={lobbyCode}
+                onStartGame={handleStartGame}
+                onExitLobby={handleExitGame}
+            />
+        )}
+        {view === View.Game && (
+            <GameRoom lobbyCode={lobbyCode} onExitGame={handleExitGame} />
+        )}
+      </div>
   );
 };
 
 const App = () => {
   return (
-    <SocketProvider>
-      <AppContent />
-    </SocketProvider>
+        <AppContent />
   );
 };
 
