@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useContext } from "react";
 import axios from "axios";
-import { io, Socket } from "socket.io-client";
 import { LandingPageProps } from "@/types";
 import { Button } from "@/components/ui/button"; // Shadcn button
 import { CardContent } from "@/components/ui/card"; // Shadcn card
@@ -8,6 +7,7 @@ import { Input } from "@/components/ui/input"; // Shadcn input
 import { Label } from "@/components/ui/label"; // Shadcn label
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Shadcn alert
 import { API_BASE_URL } from "@/config";
+import { SocketContext } from "@/contexts/SocketContext";
 
 interface JoinSuccessData {
   lobbyCode: string;
@@ -28,11 +28,6 @@ interface JoinLobbyResponse {
   error?: string;
 }
 
-interface GetLobbyPlayersResponse {
-  success: boolean;
-  players?: { username: string }[];
-  error?: string;
-}
 
 interface RecentGame {
   code: string;
@@ -44,11 +39,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [lobbyCode, setLobbyCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [, setShowGameRules] = useState(false);
 
   const usernameRef = useRef(username);
+
+  // Use socket from context
+  const { socket, connect } = useContext(SocketContext);
 
   useEffect(() => {
     usernameRef.current = username;
@@ -70,40 +67,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     [] // Removed dependency on username
   );
 
+  // Listen for socket events only if socket is available
   useEffect(() => {
-    // Initialize socket connection with reconnection strategy
-    const newSocket = io(API_BASE_URL, {
-      reconnection: true, // Enable reconnection
-      reconnectionAttempts: 5, // Limit to 5 attempts
-      reconnectionDelay: 2000, // 2 seconds delay between attempts
-    });
+    if (!socket) {
+      connect(); // Ensure connection is established
+      return;
+    }
 
-    console.log("Socket connecting...");
-
-    newSocket.on("connect", () => {
-      console.log("Socket connected successfully");
-    });
-
-    newSocket.on("connect_error", (error: Error) => {
-      console.error("Socket connection error:", error);
-      setErrorMessage("Failed to connect to server");
-      setIsLoading(false);
-    });
-
-    newSocket.on("reconnect_attempt", (attempt) => {
-      console.log(`Reconnect attempt #${attempt}`);
-    });
-
-    newSocket.on("reconnect_failed", () => {
-      console.error("Reconnection failed after maximum attempts");
-      setErrorMessage("Unable to reconnect to the server");
-    });
-
-    setSocket(newSocket);
-
-    // Set up socket event listeners
-    newSocket.on("join-success", (data: JoinSuccessData) => {
-      console.log("Received join-success event:", data);
+    const handleJoinSuccess = (data: JoinSuccessData) => {
       const currentUsername = usernameRef.current; // Use ref to get the current username
       sessionStorage.setItem("lobbyCode", data.lobbyCode);
       sessionStorage.setItem("username", currentUsername);
@@ -111,38 +82,23 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       setIsLoading(false);
       onJoinGame(data.lobbyCode);
       saveToRecentGames(data.lobbyCode);
-    });
+    };
 
-    newSocket.on("error", (error: ErrorData) => {
-      console.error("Socket error event:", error);
+    const handleError = (error: ErrorData) => {
       setErrorMessage(error.message || "An error occurred");
       setIsLoading(false);
-    });
+    };
 
-    newSocket.on("player-list", (data: { players: string[] }) => {
-      console.log("Received player list update:", data);
-      // You can handle the player list update here if needed
-    });
+    socket.on("join-success", handleJoinSuccess);
+    socket.on("error", handleError);
 
-    // Request initial player list only if a valid lobby code exists
-    const lobbyCode = sessionStorage.getItem("lobbyCode");
-    if (lobbyCode) {
-      newSocket.emit(
-        "get-lobby-players",
-        { lobbyCode },
-        (response: GetLobbyPlayersResponse) => {
-          if (response.success && response.players) {
-            console.log("Received initial player list:", response.players);
-            // Handle the initial player list here
-          } else {
-            console.error("Failed to get initial player list:", response.error);
-          }
-        }
-      );
-    } else {
-      console.warn("No valid lobby code found. Skipping player list request.");
-    }
+    return () => {
+      socket.off("join-success", handleJoinSuccess);
+      socket.off("error", handleError);
+    };
+  }, [socket, onJoinGame, saveToRecentGames, connect]);
 
+  useEffect(() => {
     // Load recent games from localStorage
     const savedGames = localStorage.getItem("recentGames");
     if (savedGames) {
@@ -158,19 +114,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     if (savedUsername) {
       setUsername(savedUsername);
     }
-
-    // Cleanup on unmount
-    return () => {
-      newSocket.off("join-success");
-      newSocket.off("error");
-      newSocket.off("connect");
-      newSocket.off("connect_error");
-      newSocket.off("player-list");
-      newSocket.off("reconnect_attempt");
-      newSocket.off("reconnect_failed");
-      newSocket.disconnect();
-    };
-  }, [onJoinGame, saveToRecentGames]); // Removed dependency on username
+  }, []);
 
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,19 +208,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     setLobbyCode(e.target.value);
     setErrorMessage(""); // Clear error message when user starts typing
   };
-  
+
   const handleQuickJoin = (code: string) => {
     setLobbyCode(code);
     const trimmedUsername = username.trim();
-    
+
     if (!trimmedUsername) {
       setErrorMessage("Please enter a username");
       return;
     }
-  
+
     setIsLoading(true);
     setErrorMessage("");
-  
+
     try {
       // Emit join-lobby event and wait for acknowledgment
       socket?.emit(
@@ -440,21 +384,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     {recentGames.map(({ code }) => (
-                        <li key={code} className="flex items-center justify-between">
-                          <span className="font-mono">{code}</span>
+                      <li key={code} className="flex items-center justify-between">
+                        <span className="font-mono">{code}</span>
 
-                          {/* CHANGED: text & aria-label no longer include “Join Game” */}
-                          <Button
-                              variant="default"
-                              onClick={() => handleQuickJoin(code)}
-                              aria-label={`Quick access to lobby ${code}`}
-                              data-testid={`quick-join-${code}`}
-                          >
-                            Quick access
-                          </Button>
-                        </li>
+                        <Button
+                          variant="default"
+                          onClick={() => handleQuickJoin(code)}
+                          aria-label={`Quick access to lobby ${code}`}
+                          data-testid={`quick-join-${code}`}
+                        >
+                          Quick access
+                        </Button>
+                      </li>
                     ))}
-
                   </div>
                 </div>
               )}

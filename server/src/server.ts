@@ -795,26 +795,20 @@ app.use(cors({
 app.post("/create-lobby", async (req: Request, res: Response) => {
     try {
         const { username } = req.body;
-        const dbInstance = getDB(); // Get the database instance safely
-
+        const dbInstance = getDB();
         const lobbyId = Math.random().toString(36).substring(2, 8);
         const lobbyCode = generateLobbyCode();
-
         await dbInstance.run("INSERT INTO lobbies (id, lobby_code, status, phase) VALUES (?, ?, 'waiting', ?)", [lobbyId, lobbyCode, GamePhase.WAITING]);
         lobbies[lobbyId] = { lobbyCode, players: [username], status: "waiting", phase: GamePhase.WAITING };
-
         await dbInstance.run("INSERT INTO players (username, lobby_id, team) VALUES (?, ?, ?)", [username, lobbyId, "agent"]);
-        
-        // Emit player list to all clients in the lobby
-        io.to(lobbyId).emit("player-list", { players: lobbies[lobbyId].players });
-        
+        // Emit player list as Player objects, not just usernames
+        const playerRows = await dbInstance.all("SELECT username FROM players WHERE lobby_id = ?", [lobbyId]);
+        io.to(lobbyId).emit("player-list", { players: playerRows });
         res.json({ lobbyId, lobbyCode });
     } catch (error) {
         console.error("Fehler beim Erstellen der Lobby:", error);
         res.status(500).json({ error: 'Failed to create lobby' });
     }
-
-
 });
 
 // More comprehensive game start logic
@@ -1098,14 +1092,15 @@ io.on("connection", (socket: Socket) => {
             io.to(lobbyId).emit("player-joined", { username, lobbyId });
             
             // Emit updated player list to all clients in the lobby
-            io.to(lobbyId).emit("player-list", { players: lobbies[lobbyId].players });
+            const playerRows = await dbInstance.all("SELECT username FROM players WHERE lobby_id = ?", [lobbyId]);
+            io.to(lobbyId).emit("player-list", { players: playerRows });
             
             // Send acknowledgment to the joining client
             if (callback) {
                 callback({ 
                     success: true,
                     lobbyCode,
-                    players: lobbies[lobbyId].players 
+                    players: playerRows 
                 });
             }
 
@@ -1426,10 +1421,18 @@ io.on("connection", (socket: Socket) => {
 
             const [lobbyId, lobbyData] = lobby;
 
+            const dbInstance = getDB();
+            const playerRows = await dbInstance.all(
+                "SELECT username FROM players WHERE lobby_id = ?",
+                [lobbyId]
+            );
+
+            io.to(lobbyId).emit("player-list", { players: playerRows });
+
             if (callback) {
                 callback({ 
                     success: true,
-                    players: lobbyData.players.map(username => ({ username }))
+                    players: playerRows
                 });
             }
         } catch (error) {
