@@ -264,6 +264,47 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     setLobbyCode(e.target.value);
     setErrorMessage(""); // Clear error message when user starts typing
   };
+  
+  const handleQuickJoin = (code: string) => {
+    setLobbyCode(code);
+    const trimmedUsername = username.trim();
+    
+    if (!trimmedUsername) {
+      setErrorMessage("Please enter a username");
+      return;
+    }
+  
+    setIsLoading(true);
+    setErrorMessage("");
+  
+    try {
+      // Emit join-lobby event and wait for acknowledgment
+      socket?.emit(
+        "join-lobby",
+        {
+          username: trimmedUsername,
+          lobbyCode: code,
+        },
+        (response: JoinLobbyResponse) => {
+          if (response.success && response.lobbyCode) {
+            sessionStorage.setItem("lobbyCode", response.lobbyCode);
+            sessionStorage.setItem("username", trimmedUsername);
+            sessionStorage.setItem("isHost", "false");
+            setIsLoading(false);
+            onJoinGame(response.lobbyCode);
+            saveToRecentGames(response.lobbyCode);
+          } else {
+            setErrorMessage(response.error || "Failed to join lobby");
+            setIsLoading(false);
+          }
+        }
+      );
+    } catch (error) {
+      console.error("Error in handleQuickJoin:", error);
+      setErrorMessage("Failed to join lobby");
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div
@@ -349,6 +390,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   className="w-full bg-indigo-600 text-white hover:bg-indigo-700 py-3 px-6 text-base font-medium shadow-md hover:shadow-lg transition-shadow duration-200 rounded-lg"
                   disabled={isLoading}
                   data-testid="join-game-button"
+                  aria-label="Join Game with Code"
                 >
                   {isLoading ? "Joining..." : "Join Game"}
                 </Button>
@@ -397,31 +439,22 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                     <h3 className="text-xl font-semibold text-gray-800">Recent Games</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
-                    {recentGames.map((game) => (
-                      <div
-                        key={game.code}
-                        className="flex justify-between items-center bg-white border border-gray-100 rounded-lg px-4 py-3 shadow-sm hover:shadow-md transition-shadow duration-200"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-mono font-medium text-indigo-700">{game.code}</span>
-                          <span className="text-xs text-gray-500">
-                            {new Date(game.timestamp).toLocaleString()}
-                          </span>
-                        </div>
-                        <Button
-                          onClick={() => {
-                            setLobbyCode(game.code);
-                            handleJoinLobby({
-                              preventDefault: () => {},
-                            } as React.FormEvent<HTMLFormElement>);
-                          }}
-                          variant="outline"
-                          className="text-sm px-4 py-2 hover:bg-indigo-50 transition-colors duration-200 rounded-lg border-indigo-300"
-                        >
-                          Rejoin
-                        </Button>
-                      </div>
+                    {recentGames.map(({ code }) => (
+                        <li key={code} className="flex items-center justify-between">
+                          <span className="font-mono">{code}</span>
+
+                          {/* CHANGED: text & aria-label no longer include “Join Game” */}
+                          <Button
+                              variant="default"
+                              onClick={() => handleQuickJoin(code)}
+                              aria-label={`Quick access to lobby ${code}`}
+                              data-testid={`quick-join-${code}`}
+                          >
+                            Quick access
+                          </Button>
+                        </li>
                     ))}
+
                   </div>
                 </div>
               )}

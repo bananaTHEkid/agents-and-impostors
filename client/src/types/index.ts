@@ -6,6 +6,36 @@ export enum GamePhase {
   COMPLETED = 'completed'
 }
 
+export interface Player {
+  username: string;
+  team?: 'agent' | 'impostor';
+  operation?: string;
+  eliminated?: boolean;
+  isHost?: boolean;
+}
+
+export interface RoundResult {
+  winner: 'agents' | 'impostors';
+  eliminatedPlayers: string[];
+  votes: Record<string, string>;
+  roundNumber: number;
+}
+
+export interface VoteSubmission {
+  lobbyCode: string;
+  username: string;
+  vote: string;
+}
+
+export interface PlayerVotedEvent {
+  username: string;
+}
+
+export interface PhaseChangeEvent {
+  phase: GamePhase;
+  message?: string;
+}
+
 export interface LandingPageProps {
   onJoinGame: (code: string) => void;
 }
@@ -21,14 +51,6 @@ export interface GameRoomProps {
   onExitGame: () => void;
 }
 
-export interface Player {
-  username: string;
-  team?: string;
-  operation?: string;
-  eliminated?: boolean;
-  win_status?: string;
-  isHost?: boolean;
-}
 
 export interface GameState {
   currentState?: string;
@@ -91,4 +113,40 @@ export interface GameMessage {
   type: 'system' | 'prompt' | 'player';
   text: string;
   from?: string; // Optional, only for player messages
+}
+
+// Voting payloads – brand-new
+export interface VotingPhaseStartedData {
+  stories: { id: string; text: string }[];
+}
+
+export interface CastVoteData {
+  roomId: string;
+  storyId: string;
+  playerId: string;
+}
+
+export interface VoteUpdateData {
+  playerId: string;
+}
+
+export interface VotingPhaseEndedData {
+  results: {
+    storyId: string;
+    votes: number;
+    voters: string[];
+  }[];
+}
+
+/* If you keep a single map for all socket events */
+export interface ServerToClientEvents {
+  votingPhaseStarted: (data: VotingPhaseStartedData) => void;
+  voteUpdate: (data: VoteUpdateData) => void;
+  votingPhaseEnded: (data: VotingPhaseEndedData) => void;
+  // …existing events
+}
+
+export interface ClientToServerEvents {
+  castVote: (data: CastVoteData) => void;
+  // …existing events
 }

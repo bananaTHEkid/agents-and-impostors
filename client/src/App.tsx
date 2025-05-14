@@ -8,7 +8,6 @@ import {
   GameResultsData,
   PlayerJoinedData,
   JoinSuccessData,
-  ErrorData,
   GamePhase,
   PlayerRemovedData
 } from "./types";

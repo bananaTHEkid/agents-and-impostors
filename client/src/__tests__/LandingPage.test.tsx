@@ -131,7 +131,7 @@ describe('LandingPage', () => {
     await act(async () => {
       await user.type(screen.getByLabelText(/username/i), 'testuser');
       await user.type(screen.getByLabelText(/lobby code/i), 'ABC123');
-      await user.click(screen.getByRole('button', { name: /join game/i }));
+      await user.click(screen.getByTestId('join-game-button'));
     });
 
     await waitFor(() => {
@@ -248,7 +248,7 @@ describe('LandingPage', () => {
     const user = userEvent.setup();
 
     // Click join button without filling anything
-    const joinButton = screen.getByRole('button', { name: /join game/i });
+    const joinButton = screen.getByTestId('join-game-button');
     await act(async () => {
       await user.click(joinButton);
     });
@@ -292,8 +292,8 @@ describe('LandingPage', () => {
       await user.type(lobbyCodeInput, 'ABC123');
     });
 
-    // Click join button
-    const joinButton = screen.getByRole('button', { name: /join game/i });
+    // Click join button using data-testid
+    const joinButton = screen.getByTestId('join-game-button');
     await act(async () => {
       await user.click(joinButton);
     });
@@ -670,8 +670,8 @@ describe('LandingPage', () => {
     // Verify that the recent games section is displayed
     expect(screen.getByText('Recent Games')).toBeInTheDocument();
 
-    // Verify that the rejoin button is displayed
-    const rejoinButton = screen.getByText('Rejoin');
+    // Verify that the rejoin button is displayed with exact text
+    const rejoinButton = screen.getByText(/^Rejoin$/);
     expect(rejoinButton).toBeInTheDocument();
 
     // Verify the lobby code is displayed
