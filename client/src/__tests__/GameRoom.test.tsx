@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import '@testing-library/jest-dom/vitest'; // Import the matchers
 import GameRoom from '../components/GameRoom';
 import { mockSocket, triggerSocketEvent } from './setup';
 
@@ -11,6 +12,28 @@ describe('GameRoom Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Create a fresh, isolated mock for sessionStorage for GameRoom tests
+    const gameRoomSessionStorageMock = {
+      getItem: vi.fn((key: string): string | null => {
+        if (key === 'username') return 'testUser';
+        if (key === 'gameData') return null;
+        if (key === 'players') return null;
+        if (key === 'messages') return null;
+        return null; // Default for any other key
+      }),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn((): string | null => null), // Mock for key method
+    };
+
+    Object.defineProperty(window, 'sessionStorage', {
+      value: gameRoomSessionStorageMock,
+      writable: true,
+      configurable: true, // Allows redefinition by other test suites if necessary
+    });
   });
 
   it('renders game room with lobby code', () => {
@@ -206,6 +229,9 @@ describe('GameRoom Component', () => {
     expect(mockSocket.off).toHaveBeenCalledWith('player-voted');
     expect(mockSocket.off).toHaveBeenCalledWith('vote-submitted');
     expect(mockSocket.off).toHaveBeenCalledWith('game-results');
+    expect(mockSocket.off).toHaveBeenCalledWith('player-joined');
+    expect(mockSocket.off).toHaveBeenCalledWith('join-success');
+    expect(mockSocket.off).toHaveBeenCalledWith('error');
   });
   
   it('allows submitting votes through the form in voting phase', async () => {
@@ -315,6 +341,16 @@ describe('GameRoom Component', () => {
       expect(phaseContent).toHaveTextContent('The game master is assigning teams...');
     });
   
+    // Test operation assignment phase
+    await act(async () => {
+      await triggerSocketEvent('game-state', { phase: 'operation_assignment' });
+    });
+    await waitFor(() => {
+      const phaseContent = screen.getByTestId('phase-content');
+      expect(phaseContent).toHaveTextContent('Operation Assignment Phase');
+      expect(phaseContent).toHaveTextContent('Special operations are being assigned to players...');
+    });
+
     // Test completed phase with results
     await act(async () => {
       await triggerSocketEvent('game-results', { 
@@ -354,16 +390,11 @@ describe('GameRoom Component', () => {
     // Using a more specific query to get the ListGroup.Item in the voting phase section
     await waitFor(() => screen.getByText('Vote for a player you suspect is an impostor:'));
     
-    // Get all the action buttons/list items and find the one for player1
-    const playerOptions = screen.getAllByRole('button');
-    const player1Option = playerOptions.find(option => 
-      option.textContent?.trim() === 'player1'
-    );
+    // Find the specific player button by its accessible name
+    const player1Option = screen.getByRole('button', { name: 'player1' });
     
-    expect(player1Option).toBeTruthy();
-    if (player1Option) {
-      fireEvent.click(player1Option);
-    }
+    expect(player1Option).toBeInTheDocument();
+    fireEvent.click(player1Option);
   
     // Check the socket emit call was made
     expect(mockSocket.emit).toHaveBeenCalledWith('submit-vote', {

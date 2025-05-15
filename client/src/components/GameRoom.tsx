@@ -19,6 +19,30 @@ import {
   GameMessage,
 } from "@/types";
 import GameInfo from "./GameInfo";
+interface PlayerOperation {
+  name: string;
+    details: {
+    message?: string;
+    success?: boolean;
+    availablePlayers?: string[]; // For confession, defector
+    // Confession specific
+    myTeam?: string;
+    confessionMade?: boolean; // Server sets this in operation_info
+    // Defector specific
+    targetPlayer?: string; // Server sets this in operation_info after choice
+    teamChanged?: boolean; // Server sets this after win condition modification
+    // Grudge specific
+    grudgeTarget?: string;
+    // Danish Intelligence specific
+    revealedImpostor?: string;
+    revealedAgent?: string;
+    // Old Photographs specific
+    revealedPlayers?: string[];
+    [key: string]: unknown; // Allow other dynamic properties
+  };
+  used?: boolean; // Client-side flag to indicate if an action has been taken
+}
+
 import { useSocket } from '@/Socket/useSocket';
 import { FiLogOut, FiMessageCircle, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
 
@@ -39,6 +63,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const [userInput, setUserInput] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [currentPhase, setCurrentPhase] = useState<GamePhase>(GamePhase.WAITING);
+   const [myOperation, setMyOperation] = useState<PlayerOperation | null>(() => {
+    const saved = sessionStorage.getItem('myOperation');
+    return saved ? JSON.parse(saved) as PlayerOperation : null;
+  });
+  const [operationTargetPlayer, setOperationTargetPlayer] = useState<string | null>(null);
+ 
   const username: string = sessionStorage.getItem("username") ?? "";
 
   // Save state to sessionStorage whenever it changes
@@ -53,6 +83,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   useEffect(() => {
     if (messages.length) sessionStorage.setItem('messages', JSON.stringify(messages));
   }, [messages]);
+
+  useEffect(() => {
+    if (myOperation) sessionStorage.setItem('myOperation', JSON.stringify(myOperation));
+    else sessionStorage.removeItem('myOperation'); // Clear if null
+  }, [myOperation]);
 
   // Handle socket connection and reconnection
   useEffect(() => {
@@ -142,6 +177,42 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
+socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
+      console.log(`Operation details received for ${data.operation}:`, data.info);
+      setMyOperation({ name: data.operation, details: data.info, used: data.info.confessionMade || !!data.info.targetPlayer });
+ 
+      // Add a user-friendly message about their prepared operation
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "system",
+          // Customize this message based on the operation and its info for better UX
+          text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
+        },
+      ]);
+    });
+socket.on("operation-used", (data: { success: boolean; message?: string }) => {
+      if (data.success) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "system",
+            text: data.message || `Your operation action was successful.`,
+          },
+        ]);
+        setMyOperation(prevOp => {
+          if (!prevOp) return null;
+          // The server might send an updated 'operation-prepared' if info changes.
+          // This client-side 'used: true' ensures immediate UI update.
+          // Specific details like 'confessionMade' or 'targetPlayer' would ideally come from a fresh 'operation-prepared'.
+          return { ...prevOp, used: true };
+        });
+        setOperationTargetPlayer(null); // Clear selection
+      } else {
+        setErrorMessage(data.message || "Failed to use operation.");
+      }
+    });
+
     socket.on("player-voted", (data: { username: string }) => {
       setMessages((prev) => [
         ...prev,
@@ -200,6 +271,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("phase-change");
       socket.off("team-assignment");
       socket.off("operation-assigned");
+      socket.off("operation-prepared");
+      socket.off("operation-used");
       socket.off("player-voted");
       socket.off("vote-submitted");
       socket.off("game-results");
@@ -231,6 +304,38 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     }
 
     setUserInput("");
+  };
+
+   const handleUseConfession = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socket || !myOperation || myOperation.name !== "confession" || !operationTargetPlayer || !lobbyCode) {
+      setErrorMessage("Cannot use confession. Lobby code or target missing.");
+      return;
+    }
+    if (myOperation.details.confessionMade || myOperation.used) {
+      setErrorMessage("Confession already made.");
+      return;
+    }
+    socket.emit("use-confession", {
+      lobbyCode,
+      targetPlayer: operationTargetPlayer,
+    });
+  };
+
+  const handleUseDefector = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socket || !myOperation || myOperation.name !== "defector" || !operationTargetPlayer || !lobbyCode) {
+      setErrorMessage("Cannot use defector. Lobby code or target missing.");
+      return;
+    }
+    if (myOperation.details.targetPlayer || myOperation.used) {
+      setErrorMessage("Defector target already chosen.");
+      return;
+    }
+    socket.emit("use-defector", {
+      lobbyCode,
+      targetPlayer: operationTargetPlayer,
+    });
   };
 
   const handleVote = (targetPlayer: string) => {
@@ -305,6 +410,69 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           <div className="text-center p-4">
             <h4>Operation Assignment Phase</h4>
             <p>Special operations are being assigned to players...</p>
+            {myOperation && (
+              <Alert variant="info" className="mt-3">
+                <h5 className="mb-2">Your Operation: {myOperation.name}</h5>
+                {myOperation.details.message && <p className="mb-3">{myOperation.details.message}</p>}
+
+                {/* Informational details for specific operations */}
+                {myOperation.name === "grudge" && myOperation.details.grudgeTarget && (
+                  <p><strong>Grudge Target:</strong> {myOperation.details.grudgeTarget}</p>
+                )}
+                {myOperation.name === "danish intelligence" && myOperation.details.revealedAgent && myOperation.details.revealedImpostor && (
+                  <p><strong>Intel:</strong> {myOperation.details.revealedAgent} (Agent), {myOperation.details.revealedImpostor} (Impostor).</p>
+                )}
+                {myOperation.name === "old photographs" && myOperation.details.revealedPlayers && myOperation.details.revealedPlayers.length > 0 && (
+                  <p><strong>Photographs show:</strong> {myOperation.details.revealedPlayers.join(' and ')} are on the same team.</p>
+                )}
+
+                {/* Actionable UI for Confession */}
+                {myOperation.name === "confession" && !myOperation.details.confessionMade && !myOperation.used && myOperation.details.availablePlayers && myOperation.details.availablePlayers.length > 0 && (
+                  <Form className="mt-3" onSubmit={handleUseConfession}>
+                    <Form.Group className="mb-2">
+                      <Form.Label>Choose player to confess your team to:</Form.Label>
+                      <Form.Select
+                        value={operationTargetPlayer || ""}
+                        onChange={(e) => setOperationTargetPlayer(e.target.value)}
+                        required
+                      >
+                        <option value="" disabled>Select a player</option>
+                        {myOperation.details.availablePlayers
+                            .filter(p => p !== username)
+                            .map(p => <option key={p} value={p}>{p}</option>)}
+                      </Form.Select>
+                    </Form.Group>
+                    <Button type="submit" variant="primary" size="sm">Confess Team</Button>
+                  </Form>
+                )}
+                {myOperation.name === "confession" && (myOperation.details.confessionMade || myOperation.used) && (
+                    <p className="text-success mt-2"><FiCheckCircle className="me-1"/>You have made your confession.</p>
+                )}
+
+                {/* Actionable UI for Defector */}
+                {myOperation.name === "defector" && !myOperation.details.targetPlayer && !myOperation.used && myOperation.details.availablePlayers && myOperation.details.availablePlayers.length > 0 && (
+                  <Form className="mt-3" onSubmit={handleUseDefector}>
+                    <Form.Group className="mb-2">
+                      <Form.Label>Choose player to target for defection:</Form.Label>
+                      <Form.Select
+                        value={operationTargetPlayer || ""}
+                        onChange={(e) => setOperationTargetPlayer(e.target.value)}
+                        required
+                      >
+                        <option value="" disabled>Select a player</option>
+                        {myOperation.details.availablePlayers
+                            .filter(p => p !== username)
+                            .map(p => <option key={p} value={p}>{p}</option>)}
+                      </Form.Select>
+                    </Form.Group>
+                    <Button type="submit" variant="warning" size="sm">Choose Defection Target</Button>
+                  </Form>
+                )}
+                {myOperation.name === "defector" && (myOperation.details.targetPlayer || myOperation.used) && (
+                    <p className="text-info mt-2"><FiCheckCircle className="me-1"/>Your defector choice ({myOperation.details.targetPlayer || 'target'}) has been registered.</p>
+                )}
+              </Alert>
+            )}
           </div>
         );
         

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom/vitest'; // Import the matchers
 import LandingPage from '../components/LandingPage';
 import axios from 'axios';
 import { mockSocket, triggerSocketEvent } from './setup';
@@ -273,8 +274,8 @@ describe('LandingPage', () => {
     unmount();
 
     // Verify socket cleanup
-    expect(mockSocket.off).toHaveBeenCalledWith('join-success');
-    expect(mockSocket.off).toHaveBeenCalledWith('error');
+expect(mockSocket.off).toHaveBeenCalledWith('join-success', expect.any(Function));
+    expect(mockSocket.off).toHaveBeenCalledWith('error', expect.any(Function));
   });
 
   it('should handle special characters in username and lobby code', async () => {
@@ -596,11 +597,22 @@ describe('LandingPage', () => {
 
     it('should handle special characters in username', async () => {
       // Clear any previous mocks
-      vi.clearAllMocks();
-      const { unmount } = render(<LandingPage onJoinGame={mockOnJoinGame} />);
+      // vi.clearAllMocks(); // Already handled by the inner beforeEach
 
-      mockSocket.emit = vi.fn();
-      render(<LandingPage onJoinGame={mockOnJoinGame} />);
+      // Setup mockSocket.emit for this specific test, as inner beforeEach clears it.
+      // This implementation ensures the callback is called for 'join-lobby'.
+      mockSocket.emit = vi.fn().mockImplementation((
+        event: string,
+        data: unknown,
+        callback?: (result: { success: boolean; lobbyCode?: string; error?: string }) => void
+      ) => {
+        if (event === 'join-lobby' && callback) {
+          const typedData = data as { lobbyCode: string };
+          callback({ success: true, lobbyCode: typedData.lobbyCode });
+        }
+        return mockSocket;
+      });
+      const { unmount } = render(<LandingPage onJoinGame={mockOnJoinGame} />); // Single render
 
       const user = userEvent.setup();
 
@@ -671,7 +683,7 @@ describe('LandingPage', () => {
     expect(screen.getByText('Recent Games')).toBeInTheDocument();
 
     // Verify that the rejoin button is displayed with exact text
-    const rejoinButton = screen.getByText(/^Rejoin$/);
+    const rejoinButton = screen.getByRole('button', { name: /quick access to lobby RECENT123/i });
     expect(rejoinButton).toBeInTheDocument();
 
     // Verify the lobby code is displayed

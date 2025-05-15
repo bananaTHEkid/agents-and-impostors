@@ -1257,11 +1257,6 @@ io.on("connection", (socket: Socket) => {
             // Apply operations to players
             for (const { player, operation } of playerOperations) {
                 if (operation) {
-                    await dbInstance.run(
-                        "UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?",
-                        [operation.name, player, lobbyId]
-                    );
-
                     // Notify only the specific player about their operation
                     const playerSocketId = userSockets[player];
                     if (playerSocketId) {
@@ -1273,18 +1268,6 @@ io.on("connection", (socket: Socket) => {
                     console.log(`Assigned operation '${operation.name}' to ${player}`);
                 }
             }
-
-            // Get player data with team assignments
-            const playersData = await dbInstance.all(
-                "SELECT username, team FROM players WHERE lobby_id = ?",
-                [lobbyId]
-            );
-
-            // Generate operation info for players
-            const teamLookup = Object.fromEntries(
-                playersData.map((p: { username: string; team: string }) => [p.username, p.team])
-            );
-            await generateOperationInfo(lobbyId, lobbyData.players, teamLookup);
 
             console.log("Operation phase completed.");
 

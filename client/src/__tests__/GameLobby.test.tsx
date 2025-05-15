@@ -12,19 +12,21 @@ describe('GameLobby Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear(); // Clear sessionStorage before each test
   });
 
   it('renders lobby code correctly', () => {
+    sessionStorage.setItem('username', 'testUser'); // Assume a user is logged in
     render(<GameLobby {...mockProps} />);
     expect(screen.getByText('TEST123')).toBeInTheDocument();
   });
 
   it('displays player list when players join', async () => {
+    sessionStorage.setItem('username', 'testUser');
     render(<GameLobby {...mockProps} />);
     
-    // Use triggerSocketEvent with player data including ID and isHost
     await act(async () => {
-      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: "false" });
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: false });
     });
 
     // Wait for player list to update
@@ -33,7 +35,8 @@ describe('GameLobby Component', () => {
     });
   });
 
-  it('calls onStartGame when start button is clicked', async () => {
+  it('calls onStartGame when start button is clicked and server responds successfully', async () => {
+    sessionStorage.setItem('username', 'testUser'); // Set current user as 'testUser'
     render(<GameLobby {...mockProps} />);
     
     // Add at least 2 players so the button isn't disabled
@@ -47,44 +50,91 @@ describe('GameLobby Component', () => {
     });
     
     // Wait for the start button to be enabled
+    let startButton: HTMLButtonElement;
     await waitFor(() => {
-      const startButton = screen.getByTestId('start-game-button');
+      startButton = screen.getByTestId('start-game-button');
       expect(startButton).not.toBeDisabled();
     });
     
+    // Spy on socket.emit to control the callback for 'start-game'
+    const startGameEmitSpy = vi.spyOn(mockSocket, 'emit');
+    startGameEmitSpy.mockImplementation((event, ...args) => {
+      if (event === 'start-game') {
+        const callback = args[args.length - 1]; // Assuming callback is the last argument
+        if (typeof callback === 'function') {
+          act(() => { // Wrap in act because it will update state (isLoading, potentially onStartGame)
+            callback({ success: true }); // Simulate a successful response
+          });
+        }
+      }
+      return mockSocket; // Return mockSocket for chaining or other mock behaviors
+    });
+
     // Click the start button
-    const startButton = screen.getByTestId('start-game-button');
+    startButton = screen.getByTestId('start-game-button'); // Re-fetch if necessary
     await act(async () => {
       fireEvent.click(startButton);
     });
     
-    // Manually trigger the game-started event
-    await act(async () => {
-      await triggerSocketEvent('game-started', { phase: 'team_assignment' });
+    // Assert that socket.emit was called for "start-game"
+    expect(startGameEmitSpy).toHaveBeenCalledWith(
+      'start-game',
+      { lobbyCode: mockProps.lobbyCode },
+      expect.any(Function) // The callback
+    );
+
+    // The mockImplementation above should have called onStartGame
+    await waitFor(() => {
+      expect(mockProps.onStartGame).toHaveBeenCalled();
     });
-    
-    // Now check if onStartGame was called
-    expect(mockProps.onStartGame).toHaveBeenCalled();
+
+    startGameEmitSpy.mockRestore(); // Clean up the spy
   });
 
-  it('calls onExitLobby when exit button is clicked', async () => {
+  it('calls onExitLobby when exit button is clicked and server responds', async () => {
+    sessionStorage.setItem('username', 'testUser');
     render(<GameLobby {...mockProps} />);
     
     // Use the correct test ID that matches the component
     const exitButton = screen.getByTestId('exit-game-button');
+
+    const leaveLobbyEmitSpy = vi.spyOn(mockSocket, 'emit');
+    leaveLobbyEmitSpy.mockImplementation((event, ...args) => {
+      if (event === 'leave-lobby') {
+        const callback = args[args.length - 1];
+        if (typeof callback === 'function') {
+          act(() => {
+            callback({ success: true }); // Simulate successful server response
+          });
+        }
+      }
+      return mockSocket;
+    });
+
     await act(async () => {
       fireEvent.click(exitButton);
     });
-    
-    expect(mockProps.onExitLobby).toHaveBeenCalled();
+
+    expect(leaveLobbyEmitSpy).toHaveBeenCalledWith(
+      'leave-lobby',
+      { lobbyCode: mockProps.lobbyCode, username: 'testUser' },
+      expect.any(Function)
+    );
+
+    await waitFor(() => {
+      expect(mockProps.onExitLobby).toHaveBeenCalled();
+    });
+
+    leaveLobbyEmitSpy.mockRestore();
   });
 
   it('handles player left event', async () => {
+    sessionStorage.setItem('username', 'testUser');
     render(<GameLobby {...mockProps} />);
     
     // First add a player
     await act(async () => {
-      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: "false" });
+      await triggerSocketEvent('player-joined', { username: 'player1', id: 'player-1', isHost: false });
     });
     
     // Wait for player to appear
@@ -104,6 +154,7 @@ describe('GameLobby Component', () => {
   });
 
   it('displays error messages', async () => {
+    sessionStorage.setItem('username', 'testUser');
     render(<GameLobby {...mockProps} />);
 
     // Use triggerSocketEvent to properly trigger the error event
@@ -118,6 +169,7 @@ describe('GameLobby Component', () => {
   });
 
   it('updates player list when receiving player-list event', async () => {
+    sessionStorage.setItem('username', 'testUser');
     render(<GameLobby {...mockProps} />);
 
     // Use triggerSocketEvent with correct player format including IDs and isHost
@@ -140,6 +192,7 @@ describe('GameLobby Component', () => {
   });
 
   it('cleans up socket listeners on unmount', async () => {
+    sessionStorage.setItem('username', 'testUser');
     const { unmount } = render(<GameLobby {...mockProps} />);
     
     // Wait for socket event registration
@@ -164,6 +217,7 @@ describe('GameLobby Component', () => {
   });
 
   it('disables start button when there are fewer than 2 players', async () => {
+    sessionStorage.setItem('username', 'testUser'); // 'testUser' is the host
     render(<GameLobby {...mockProps} />);
 
     // Trigger player-list event with only one player
@@ -183,6 +237,7 @@ describe('GameLobby Component', () => {
   });
 
   it('enables start button when there are at least 2 players and user is host', async () => {
+    sessionStorage.setItem('username', 'testUser'); // 'testUser' is the host
     render(<GameLobby {...mockProps} />);
 
     // Trigger player-list event with two players, including the host
@@ -203,13 +258,14 @@ describe('GameLobby Component', () => {
   });
 
   it('does not render start button when user is not the host', async () => {
+    sessionStorage.setItem('username', 'nonHostUser'); // Current user is 'nonHostUser'
     render(<GameLobby {...mockProps} />);
 
     // Trigger player-list event with two players, but the user is not the host
     await act(async () => {
       await triggerSocketEvent('player-list', { 
         players: [
-          { username: 'testUser', isHost: false, id: 'player-1' },
+          { username: 'nonHostUser', isHost: false, id: 'player-1' }, // Current user, not host
           { username: 'hostUser', isHost: true, id: 'host-2' }
         ] 
       });
@@ -221,7 +277,8 @@ describe('GameLobby Component', () => {
     });
   });
   
-  it('starts the game when start button is clicked with 5 players in the lobby', async () => {
+  it('starts the game when start button is clicked with 5 players in the lobby and server responds successfully', async () => {
+    sessionStorage.setItem('username', 'testUser'); // Set 'testUser' as the current user (and host)
     render(<GameLobby {...mockProps} />);
     
     // Add 5 players to the lobby, with the first player being the host
@@ -238,23 +295,42 @@ describe('GameLobby Component', () => {
     });
     
     // Wait for the start button to be enabled
+    let startButton : HTMLButtonElement;
     await waitFor(() => {
-      const startButton = screen.getByTestId('start-game-button');
+      startButton = screen.getByTestId('start-game-button');
       expect(startButton).not.toBeDisabled();
     });
     
+    // Spy on socket.emit to control the callback for 'start-game'
+    const startGameEmitSpy = vi.spyOn(mockSocket, 'emit');
+    startGameEmitSpy.mockImplementation((event, ...args) => {
+      if (event === 'start-game') {
+        const callback = args[args.length - 1];
+        if (typeof callback === 'function') {
+          act(() => {
+            callback({ success: true });
+          });
+        }
+      }
+      return mockSocket;
+    });
+
     // Click the start button
-    const startButton = screen.getByTestId('start-game-button');
+    startButton = screen.getByTestId('start-game-button'); // Re-fetch
     await act(async () => {
       fireEvent.click(startButton);
     });
     
-    // Manually trigger the game-started event
-    await act(async () => {
-      await triggerSocketEvent('game-started', { phase: 'team_assignment' });
+    expect(startGameEmitSpy).toHaveBeenCalledWith(
+      'start-game',
+      { lobbyCode: mockProps.lobbyCode },
+      expect.any(Function)
+    );
+
+    await waitFor(() => {
+      expect(mockProps.onStartGame).toHaveBeenCalled();
     });
-    
-    // Verify that onStartGame was called
-    expect(mockProps.onStartGame).toHaveBeenCalled();
+
+    startGameEmitSpy.mockRestore();
   });
 });
