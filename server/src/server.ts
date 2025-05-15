@@ -361,23 +361,33 @@ async function calculateFinalResults(lobbyId: string): Promise<FinalResults> {
 
     // Get detailed round results
     const roundResults = await Promise.all(rounds.map(async round => {
-        // Get votes for the round by joining with the rounds table
+        // Get votes for the specific round_number
+        // This assumes you add a 'round_number' column to your 'votes' table
+        // and populate it when votes are cast.
         const votes = await db.all(`
             SELECT v.voter, v.target
             FROM votes v
-                     JOIN lobbies l ON l.id = v.lobby_id
-            WHERE v.lobby_id = ? AND l.current_round = ?
+            WHERE v.lobby_id = ? AND v.round_number = ?
         `, [lobbyId, round.round_number]);
 
+        // To get eliminated players for a specific past round,
+        // this data would need to have been stored at the end of that round.
+        // For example, by adding an 'eliminated_players_json' column to the 'rounds' table
+        // and populating it in `calculateRoundResults` or `endRound`.
+        // The current query will not give historical per-round eliminations accurately
+        // because player.eliminated status is reset each round.
+        // For demonstration, let's assume 'rounds' table was augmented:
+        // const roundDetail = await db.get('SELECT eliminated_players_json FROM rounds WHERE lobby_id = ? AND round_number = ?', [lobbyId, round.round_number]);
+        // const eliminatedInThisRound = roundDetail ? JSON.parse(roundDetail.eliminated_players_json) : [];
+        // For now, this will be inaccurate for past rounds:
         const eliminatedPlayers = await db.all(`
             SELECT username
             FROM players
-            WHERE lobby_id = ? AND eliminated = 1
+            WHERE lobby_id = ? AND eliminated = 1 -- This shows players eliminated in the *final* state of the game for this lobby
         `, [lobbyId]);
-
         return {
             winner: round.winner as 'agents' | 'impostors',
-            eliminatedPlayers: eliminatedPlayers.map(p => p.username),
+            eliminatedPlayers: eliminatedPlayers.map(p => p.username), // Placeholder for more accurate historical data
             votes: votes.reduce((acc, vote) => {
                 acc[vote.voter] = vote.target;
                 return acc;
@@ -569,19 +579,70 @@ const OPERATION_CONFIG: Record<
                 }
             }
         }
-    },
-    "sleeper agent": {
+    },    "sleeper agent": {
         fields: [],
         types: [],
-        // The player receiving this operation will switch their team to the opposite side
-        generateInfo: (players, teams, self) => {
-            const otherPlayers = players.filter(p => p !== self);
-            if (otherPlayers.length === 0) return null;
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const currentTeam = teams[self];
+            if (!currentTeam) {
+                console.warn(`Player ${self} has no team assigned for sleeper agent operation.`);
+                return {
+                    success: false,
+                    message: "Could not determine your current team.",
+                };
+            }
 
-            const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
-            return { targetPlayer: randomPlayer, targetTeam: teams[randomPlayer] };
+            // The sleeper agent's true team is the opposite of what's shown
+            const trueTeam = currentTeam === "agent" ? "impostor" : "agent";
+
+            return {
+                success: true,
+                displayedTeam: currentTeam,
+                trueTeam: trueTeam,
+                teamSwitched: false, // Will be set to true when the switch happens
+                message: `You appear to be an ${currentTeam.toUpperCase()}, but you're actually an ${trueTeam.toUpperCase()}!`,
+            };
         },
-        modifyWinCondition: async () => {}, // No effect on win condition
+        modifyWinCondition: async (
+            lobbyId: string,
+            players: string[],
+            votes: Record<string, string>,
+            teams: Record<string, string>,
+            db: any
+        ) => {
+            // Get all players with sleeper agent operation
+            const sleeperAgents = await db.all(
+                "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'sleeper agent'",
+                [lobbyId]
+            );
+
+            for (const player of sleeperAgents) {
+                if (!player.operation_info) continue;
+
+                try {
+                    const info = JSON.parse(player.operation_info);
+                    if (!info.success || info.teamSwitched) continue;
+
+                    // Switch the team to their true team
+                    await db.run(
+                        "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
+                        [info.trueTeam, lobbyId, player.username]
+                    );
+
+                    // Mark the operation as completed
+                    await db.run(
+                        "UPDATE players SET operation_info = json_patch(operation_info, ?) WHERE lobby_id = ? AND username = ?",
+                        [JSON.stringify({ teamSwitched: true }), lobbyId, player.username]
+                    );
+
+                    // Update teams record to reflect the change
+                    teams[player.username] = info.trueTeam;
+
+                } catch (error) {
+                    console.error(`Error processing sleeper agent operation for player ${player.username}:`, error);
+                }
+            }
+        },
     },
     "anonymous tip": {
         fields: ["message"],
@@ -839,6 +900,7 @@ const assignTeamsAndOperations = async (lobbyId: string, players: string[]) => {
     // Shuffle & assign operations
     const shuffledOperations = GAME_CONFIG.OPERATIONS.slice().sort(() => 0.5 - Math.random());
     const playerOperations = players.map((player, index) => ({
+        // Potential issue: if players.length > shuffledOperations.length, operation will be "default-operation"
         player,
         operation: shuffledOperations[index] || "default-operation"
     }));
@@ -1287,6 +1349,50 @@ io.on("connection", (socket: Socket) => {
         }
     });
 
+    socket.on("use-defector", async ({ targetPlayer, lobbyId }) => {
+        try {
+            const db = getDB();
+            
+            // Verify the player has the defector operation
+            const defector = await db.get(
+                "SELECT username FROM players WHERE lobby_id = ? AND operation = 'defector'",
+                [lobbyId]
+            );
+
+            if (!defector) {
+                socket.emit("error", { message: "Invalid defector operation" });
+                return;
+            }
+
+            // Verify the target player exists
+            const targetExists = await db.get(
+                "SELECT username FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, targetPlayer]
+            );
+
+            if (!targetExists) {
+                socket.emit("error", { message: "Target player not found" });
+                return;
+            }
+
+            // Store the target player choice in operation_info
+            await db.run(
+                "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+                [JSON.stringify({ targetPlayer, teamChanged: false }), lobbyId, defector.username]
+            );
+
+            // Notify the defector that their choice was recorded
+            socket.emit("operation-used", { 
+                success: true,
+                message: `You've chosen ${targetPlayer} as your target. Their team will be switched during the next phase.`
+            });
+
+        } catch (error) {
+            console.error("Error processing defector operation:", error);
+            socket.emit("error", { message: "Failed to process defector operation" });
+        }
+    });
+
     socket.on("submit-vote", async ({ lobbyCode, username, vote }) => {
         try {
             const dbInstance = getDB();
@@ -1309,10 +1415,13 @@ io.on("connection", (socket: Socket) => {
                 throw new Error("Voting is not currently allowed - not in voting phase");
             }
 
+            const currentLobbyRound = lobbyData.phase === GamePhase.VOTING ? (await dbInstance.get("SELECT current_round FROM lobbies WHERE id = ?", [lobbyId])).current_round : null;
+            if (currentLobbyRound === null) throw new Error("Could not determine current round for voting.");
+
             // Record the vote (only do this once!)
             await dbInstance.run(
-                "INSERT INTO votes (lobby_id, voter, target) VALUES (?, ?, ?)",
-                [lobbyId, username, vote]
+                "INSERT INTO votes (lobby_id, voter, target, round_number) VALUES (?, ?, ?, ?)", // Added round_number
+                [lobbyId, username, vote, currentLobbyRound]
             );
 
             // Notify clients about the vote
@@ -1329,7 +1438,7 @@ io.on("connection", (socket: Socket) => {
                 dbInstance.all(`
                 SELECT COUNT(*) as count 
                 FROM votes 
-                WHERE lobby_id = ?
+                WHERE lobby_id = ? AND round_number = ?
             `, [lobbyId])
             ]);
 
