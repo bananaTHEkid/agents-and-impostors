@@ -14,3 +14,9 @@ server/dist/
 # Environment variables
 client/.env
 server/.env
+
+# Playwright Test Results (if client is a subdirectory)
+client/test-results/
+client/playwright-report/
+client/blob-report/
+client/playwright/.cache/
