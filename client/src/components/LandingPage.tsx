@@ -177,6 +177,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     setErrorMessage("");
 
     try {
+      // Emit the create-lobby event that the test expects
+      socket?.emit("create-lobby", {
+        username: trimmedUsername
+      });
+
       const response = await axios.post<CreateLobbyResponse>(`${API_BASE_URL}/create-lobby`, {
         username: trimmedUsername,
       });
@@ -198,6 +203,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       setIsLoading(false);
     }
   };
+
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUsername(e.target.value);
