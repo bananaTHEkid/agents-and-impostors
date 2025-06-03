@@ -61,11 +61,24 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npm run dev',
-    cwd: '.',
-    url: 'http://localhost:5000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: [
+/*     {
+      command: 'npm run dev',
+      cwd: '../server',
+      url: 'http://localhost:5001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000, // Increased timeout to 2 minutes for server startup
+      stdout: 'pipe',
+      stderr: 'pipe',
+    }, */
+    {
+      command: 'npx vite --port 5000 --strict-port', // Use Vite directly with strict port
+      cwd: '.',
+      url: 'http://localhost:5000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 40000, // Increased timeout for client
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
 });

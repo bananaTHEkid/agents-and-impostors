@@ -45,6 +45,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
 
   // Atomare Zustandsaktualisierung für die Spielerliste
   const updatePlayers = useCallback((newPlayers: Player[] | { players: Player[] }) => {
+    console.log('[GameLobby] updatePlayers called with:', newPlayers);
     setPlayers(prev => {
       // Handle different response formats
       const playerList = Array.isArray(newPlayers) 
@@ -72,6 +73,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
   }, []);
 // Verbesserte Socket-Event-Behandlung
   useEffect(() => {
+    console.log('[GameLobby] useEffect: socket:', socket, 'connected:', socket?.connected);
     if (!socket) return;
 
     // Typ für die Socket-Antwort
@@ -107,7 +109,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
     }, 10000);
 
     const handlePlayerList = (data: Player[] | { players: Player[] }) => {
-      console.log("Empfangene Spielerdaten:", data); // Debug-Log
+      console.log('[GameLobby] Received player-list:', data); // Debug-Log
       updatePlayers(data);
     };
 
@@ -288,7 +290,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
       });
   }, [lobbyCode]);
 
-
+  // Add debug log before rendering
+  console.log('Rendering GameLobby with players:', players);
   return (
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-lobby">
         <div className="w-full h-full bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -327,7 +330,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div>
                   <h3 className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">Lobby-Code</h3>
-                  <div className="font-mono text-2xl tracking-wider bg-white px-4 py-2 rounded-lg shadow-inner border border-indigo-100">
+                  <div className="font-mono text-2xl tracking-wider bg-white px-4 py-2 rounded-lg shadow-inner border border-indigo-100" data-testid="code-viewer">
                     {lobbyCode}
                   </div>
                 </div>
@@ -363,7 +366,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="player-list">
                 {players.map((player) => (
                     <div
                         key={player.username}
