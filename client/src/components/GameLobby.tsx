@@ -101,12 +101,12 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
     // Initiale Spielerliste abrufen
     fetchPlayerList();
 
-    // Periodisches Aktualisieren der Spielerliste alle 10 Sekunden
+    // Periodisches Aktualisieren der Spielerliste alle 3 Sekunden
     const refreshInterval = setInterval(() => {
       if (socket && socket.connected) {
         fetchPlayerList();
       }
-    }, 10000);
+    }, 3000);
 
     const handlePlayerList = (data: Player[] | { players: Player[] }) => {
       console.log('[GameLobby] Received player-list:', data); // Debug-Log
