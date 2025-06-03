@@ -82,22 +82,53 @@ export async function joinLobby(
 
 export async function leaveLobby(lobbyCode: string, username: string): Promise<{ success: boolean; error?: string; lobbyClosed?: boolean }> {
     const db = getDB();
-    const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+    
+    try {
+        // First verify the lobby exists
+        const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+        if (!lobby) {
+            return { success: false, error: "Lobby not found" };
+        }
+        
+        const lobbyId = lobby.id;
 
-    if (!lobby) {
-        return { success: false, error: "Lobby not found" };
+        // Verify the player exists in the lobby before deletion
+        const player = await db.get(
+            "SELECT id FROM players WHERE username = ? AND lobby_id = ?",
+            [username, lobbyId]
+        );
+
+        if (!player) {
+            return { success: false, error: "Player not found in lobby" };
+        }
+
+        // Delete the player
+        const deleteResult = await db.run(
+            "DELETE FROM players WHERE username = ? AND lobby_id = ?",
+            [username, lobbyId]
+        );
+
+        // Verify deletion was successful
+        if (deleteResult.changes === 0) {
+            return { success: false, error: "Failed to remove player from lobby" };
+        }
+
+        // Check remaining players
+        const remainingPlayers = await db.get(
+            "SELECT COUNT(*) as count FROM players WHERE lobby_id = ?",
+            [lobbyId]
+        );
+
+        if (remainingPlayers.count === 0) {
+            await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
+            return { success: true, lobbyClosed: true };
+        }
+
+        return { success: true, lobbyClosed: false };
+    } catch (error) {
+        console.error("Error in leaveLobby:", error);
+        return { success: false, error: "Database error occurred" };
     }
-    const lobbyId = lobby.id;
-
-    await db.run("DELETE FROM players WHERE username = ? AND lobby_id = ?", [username, lobbyId]);
-
-    const remainingPlayers = await db.get("SELECT COUNT(*) as count FROM players WHERE lobby_id = ?", [lobbyId]);
-    if (remainingPlayers.count === 0) {
-        await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
-        return { success: true, lobbyClosed: true };
-    }
-
-    return { success: true, lobbyClosed: false };
 }
 
 export async function getLobbyPlayers(lobbyCode: string): Promise<{ success: boolean; error?: string; players?: any[] }> {

@@ -77,6 +77,12 @@ const AppContent = () => {
       setView(View.Lobby);
     });
 
+    // Add new socket listener for game start confirmation
+    socket.on("game-started", () => {
+      console.log("Game started confirmation received");
+      setView(View.Game);
+    });
+
     // Cleanup the listeners on component unmount
     return () => {
       socket.off("team-assignment");
@@ -87,6 +93,7 @@ const AppContent = () => {
       socket.off("game-results");
       socket.off("player-joined");
       socket.off("join-success");
+      socket.off("game-started");
     };
   }, [socket]);
 
@@ -100,9 +107,10 @@ const AppContent = () => {
   };
 
   const handleStartGame = () => {
+    // Remove the immediate view change
+    // The view will change when we receive the game-started event
     if (!socket) return;
-    // Only set the view here, as `start-game` logic happens in the GameLobby
-    setView(View.Game);
+    console.log("Waiting for game start confirmation...");
   };
 
   const handleExitGame = () => {

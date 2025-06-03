@@ -68,79 +68,81 @@ io.on("connection", (socket: Socket) => {
     // Removed local cleanupOldSocket function
 
     socket.on("rejoin-game", async ({ lobbyCode, username }) => {
-        try {
-            connectionManager.cleanupOldSocket(username, socket.id, io);
-            const db = getDB(); 
-            const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
-            
-            if (!lobby) {
-                socket.emit("error", { message: "Lobby not found" });
-                return;
-            }
-
-            const gameState = await db.get("SELECT status, round, total_rounds FROM lobbies WHERE id = ?", [lobby.id]);
-            const players = await db.all("SELECT username, team, operation FROM players WHERE lobby_id = ?", [lobby.id]);
-            
-            connectionManager.addConnection(socket.id, username);
-            socket.join(lobby.id);
-
-            socket.emit("game-state", {
-                currentState: gameState.status,
-                round: gameState.round,
-                totalRounds: gameState.total_rounds
-            });
-
-            socket.emit("player-list", { players });
-
-            // Notify other players
-            socket.to(lobby.id).emit("game-message", {
-                type: "system",
-                text: `${username} has reconnected`
-            });
-        } catch (error) {
-            console.error("Error in rejoin-game:", error);
-            socket.emit("error", { message: "Failed to rejoin game" });
+    try {
+        connectionManager.cleanupOldSocket(username, socket.id, io);
+        const db = getDB(); 
+        const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+        
+        if (!lobby) {
+            socket.emit("error", { message: "Lobby not found" });
+            return;
         }
-    });
 
-    socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, callback?: (response: any) => void) => {
-        try {
-            const { username, lobbyCode } = data;
-            connectionManager.cleanupOldSocket(username, socket.id, io);
-            
-            const joinResult = await lobbyService.joinLobby(lobbyCode, username);
+        const gameState = await db.get("SELECT status, round, total_rounds FROM lobbies WHERE id = ?", [lobby.id]);
+        const players = await db.all("SELECT username, team, operation FROM players WHERE lobby_id = ?", [lobby.id]);
+        
+        // CHANGE: Add lobbyCode parameter
+        connectionManager.addConnection(socket.id, username, lobbyCode);
+        socket.join(lobby.id);
 
-            if (!joinResult.success || !joinResult.lobbyId) {
-                if (callback) callback({ success: false, error: joinResult.error });
-                return;
-            }
+        socket.emit("game-state", {
+            currentState: gameState.status,
+            round: gameState.round,
+            totalRounds: gameState.total_rounds
+        });
 
-            const lobbyId = joinResult.lobbyId;
-            connectionManager.addConnection(socket.id, username);
-            socket.join(lobbyId);
-            
-            io.to(lobbyId).emit("player-joined", { username, lobbyId });
-            io.to(lobbyId).emit("player-list", { players: joinResult.players });
-            
-            if (callback) {
-                callback({ 
-                    success: true,
-                    lobbyCode,
-                    players: joinResult.players 
-                });
-            }
-            console.log(`Player ${username} joined lobby ${lobbyCode}`);
+        socket.emit("player-list", { players });
 
-        } catch (error) {
-            console.error("Error joining lobby:", error);
-            if (callback) {
-                callback({ 
-                    success: false, 
-                    error: error instanceof Error ? error.message : "Unknown error" 
-                });
-            }
+        // Notify other players
+        socket.to(lobby.id).emit("game-message", {
+            type: "system",
+            text: `${username} has reconnected`
+        });
+    } catch (error) {
+        console.error("Error in rejoin-game:", error);
+        socket.emit("error", { message: "Failed to rejoin game" });
+    }
+});
+
+socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, callback?: (response: any) => void) => {
+    try {
+        const { username, lobbyCode } = data;
+        connectionManager.cleanupOldSocket(username, socket.id, io);
+        
+        const joinResult = await lobbyService.joinLobby(lobbyCode, username);
+
+        if (!joinResult.success || !joinResult.lobbyId) {
+            if (callback) callback({ success: false, error: joinResult.error });
+            return;
         }
-    });
+
+        const lobbyId = joinResult.lobbyId;
+        // CHANGE: Add lobbyCode parameter to track which lobby the user is in
+        connectionManager.addConnection(socket.id, username, lobbyCode);
+        socket.join(lobbyId);
+        
+        io.to(lobbyId).emit("player-joined", { username, lobbyId });
+        io.to(lobbyId).emit("player-list", { players: joinResult.players });
+        
+        if (callback) {
+            callback({ 
+                success: true,
+                lobbyCode,
+                players: joinResult.players 
+            });
+        }
+        console.log(`Player ${username} joined lobby ${lobbyCode}`);
+
+    } catch (error) {
+        console.error("Error joining lobby:", error);
+        if (callback) {
+            callback({ 
+                success: false, 
+                error: error instanceof Error ? error.message : "Unknown error" 
+            });
+        }
+    }
+});
 
     // Handle game start logic
     socket.on("start-game", async ({ lobbyCode, rounds = 3 }) => {
@@ -401,38 +403,36 @@ io.on("connection", (socket: Socket) => {
         }
     });
     socket.on("leave-lobby", async ({ lobbyCode, username }) => {
-        try {
-            const leaveResult = await lobbyService.leaveLobby(lobbyCode, username);
+    try {
+        const leaveResult = await lobbyService.leaveLobby(lobbyCode, username);
 
-            if (!leaveResult.success) {
-                throw new Error(leaveResult.error || "Failed to leave lobby");
-            }
-            
-            connectionManager.removeConnection(socket.id); 
-            
-            socket.leave(lobbyCode); 
-            io.to(lobbyCode).emit("player-left", { username }); 
-
-            if (leaveResult.lobbyClosed) {
-                console.log(`Lobby ${lobbyCode} closed due to inactivity.`);
-            }
-
-        } catch (error) {
-            console.error("Error leaving lobby:", error);
-            socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
+        if (!leaveResult.success) {
+            throw new Error(leaveResult.error || "Failed to leave lobby");
         }
-    });
+        
+        connectionManager.removeConnection(socket.id); 
+        
+        socket.leave(lobbyCode); 
+        io.to(lobbyCode).emit("player-left", { username }); 
 
-    socket.on("disconnect", () => {
+        if (leaveResult.lobbyClosed) {
+            console.log(`Lobby ${lobbyCode} closed due to inactivity.`);
+        }
+
+    } catch (error) {
+        console.error("Error leaving lobby:", error);
+        socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
+    }
+});
+
+    socket.on("disconnect", async () => {
         const username = connectionManager.getUsername(socket.id);
-        connectionManager.removeConnection(socket.id);
-        if (username) {
-            console.log(`Socket ${socket.id} for user ${username} disconnected. Entry removed.`);
-            // Future enhancement: Notify relevant lobbies about the disconnection.
-        } else {
-            console.log(`Socket ${socket.id} disconnected. No user associated or already cleaned up.`);
-        }
+        console.log(`Socket ${socket.id} for user ${username} disconnected`);
+        
+        // Use the new handleDisconnect function for automatic cleanup
+        await connectionManager.handleDisconnect(socket.id, io);
     });
+
 
     socket.on("get-lobby-players", async ({ lobbyCode }, callback) => {
         try {

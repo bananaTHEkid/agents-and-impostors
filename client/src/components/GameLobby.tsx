@@ -15,7 +15,7 @@ const validatePlayerData = (player: unknown): player is Player => {
 
 
 
-const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGame }) => {
+const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
   const { socket } = useSocket();
   const [players, setPlayers] = useState<Player[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
@@ -185,47 +185,44 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby, onStartGa
 
   const handleStartGame = useCallback(() => {
     if (!socket) {
-      setErrorMessage("Keine Verbindung zum Server. Bitte lade die Seite neu.");
-      return;
+        setErrorMessage("Keine Verbindung zum Server. Bitte lade die Seite neu.");
+        return;
     }
 
     if (players.length < 2) {
-      setErrorMessage("Mindestens 2 Spieler werden benötigt, um das Spiel zu starten.");
-      return;
+        setErrorMessage("Mindestens 2 Spieler werden benötigt, um das Spiel zu starten.");
+        return;
     }
 
     if (!isHost(currentUsername)) {
-      setErrorMessage("Nur der Host kann das Spiel starten.");
-      return;
+        setErrorMessage("Nur der Host kann das Spiel starten.");
+        return;
     }
 
-    // Set up a timeout to ensure loading state is reset even if server doesn't respond
     setIsLoading(true);
     const timeoutId = setTimeout(() => {
-      setIsLoading(false);
-      setErrorMessage("Server antwortet nicht. Bitte versuche es später erneut.");
-    }, 5000); // 5 second timeout
+        setIsLoading(false);
+        setErrorMessage("Server antwortet nicht. Bitte versuche es später erneut.");
+    }, 5000);
 
     socket.emit("start-game", { lobbyCode }, (response: { success: boolean, error?: string } | undefined) => {
-      clearTimeout(timeoutId); // Clear the timeout as we got a response
-      setIsLoading(false);
+        clearTimeout(timeoutId);
+        setIsLoading(false);
 
-      // If response is undefined, the server didn't provide a proper response
-      if (!response) {
-        setErrorMessage("Ungültige Antwort vom Server. Bitte versuche es später erneut.");
-        return;
-      }
-
-      if (!response.success) {
-        setErrorMessage(response.error || "Fehler beim Starten des Spiels.");
-          return;
+        if (!response) {
+            setErrorMessage("Ungültige Antwort vom Server. Bitte versuche es später erneut.");
+            return;
         }
-        
-        // If successful, call the onStartGame prop to transition to the game view
-        onStartGame();
-      });
-    }, [socket, lobbyCode, players.length, currentUsername, isHost, onStartGame]);
 
+        if (!response.success) {
+            setErrorMessage(response.error || "Fehler beim Starten des Spiels.");
+            return;
+        }
+
+        // Don't call onStartGame here anymore
+        // The App component will handle the view change when it receives the game-started event
+    });
+}, [socket, lobbyCode, players.length, currentUsername, isHost]);
   // In der handleLeaveLobby-Funktion:
   const handleLeaveLobby = useCallback(() => {
     setIsLoading(true);

@@ -3,8 +3,6 @@ import { test, expect } from '@playwright/test';
 // Test suite for Game Lobby
 test.describe('Game Lobby', () => {
 
-
-
   test('shoul show game lobby for with creating player in list', async ({ page }) => {
     await page.goto('http://localhost:5000/');
     await page.getByRole('textbox', { name: 'Username' }).click();
@@ -14,7 +12,7 @@ test.describe('Game Lobby', () => {
     await expect(page.getByRole('alert').locator('div')).toBeVisible();
   });
 
-    test('should allow two players to join the game lobby', async ({ browser }) => {
+	test('should allow two players to join the game lobby', async ({ browser }) => {
     const contextPlayer1 = await browser.newContext();
     const contextPlayer2 = await browser.newContext();
     const player1Page = await contextPlayer1.newPage();
@@ -64,6 +62,8 @@ test.describe('Game Lobby', () => {
     // Create contexts and pages for all players
     const contexts = await Promise.all([...Array(5)].map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map(context => context.newPage()));
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [player1Page, player2Page, player3Page, player4Page, player5Page] = pages;
 
     // Player 1 creates lobby
@@ -78,28 +78,28 @@ test.describe('Game Lobby', () => {
 
     // Join lobby with players 2-5
     for(let i = 1; i < 5; i++) {
-        const playerPage = pages[i];
-        await playerPage.goto('http://localhost:5000/');
-        await playerPage.getByRole('textbox', { name: 'Username' }).fill(`Player${i+1}`);
-        await playerPage.getByLabel('Lobby Code').fill(lobbycode);
-        
-        // Wait for socket connection before joining
-        await playerPage.waitForLoadState('networkidle');
-        await playerPage.getByTestId('join-game-button').click();
+			const playerPage = pages[i];
+			await playerPage.goto('http://localhost:5000/');
+			await playerPage.getByRole('textbox', { name: 'Username' }).fill(`Player${i+1}`);
+			await playerPage.getByLabel('Lobby Code').fill(lobbycode);
+			
+			// Wait for socket connection before joining
+			await playerPage.waitForLoadState('networkidle');
+			await playerPage.getByTestId('join-game-button').click();
 
-        // Verify socket connection for each player
-        try {
-            await expect(playerPage.locator('text=Socket verbunden: Ja')).toBeVisible({ timeout: 15000 });
-        } catch (e) {
-            console.log(`Player ${i+1} failed to connect:`, await playerPage.content());
-            throw e;
-        }
+			// Verify socket connection for each player
+			try {
+				await expect(playerPage.locator('text=Socket verbunden: Ja')).toBeVisible({ timeout: 15000 });
+			} catch (e) {
+				console.log(`Player ${i+1} failed to connect:`, await playerPage.content());
+				throw e;
+			}
 
-        // Verify updated player count for all connected players
-        const expectedPlayers = `${i+1} Spieler`;
-        for(let j = 0; j <= i; j++) {
-            await expect(pages[j].getByTestId('game-lobby')).toContainText(expectedPlayers, { timeout: 120000 });
-        }
+			// Verify updated player count for all connected players
+			const expectedPlayers = `${i+1} Spieler`;
+			for(let j = 0; j <= i; j++) {
+				await expect(pages[j].getByTestId('game-lobby')).toContainText(expectedPlayers, { timeout: 120000 });
+			}
     }
 
     // check activated start game button if at least five players are in a lobby (for the host)
@@ -108,5 +108,5 @@ test.describe('Game Lobby', () => {
 
     // Cleanup
     await Promise.all(contexts.map(context => context.close()));
-});
+	});
 });
