@@ -63,8 +63,7 @@ test.describe('Game Lobby', () => {
     const contexts = await Promise.all([...Array(5)].map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map(context => context.newPage()));
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [player1Page, player2Page, player3Page, player4Page, player5Page] = pages;
+    const [player1Page] = pages;
 
     // Player 1 creates lobby
     await player1Page.goto('http://localhost:5000/');
