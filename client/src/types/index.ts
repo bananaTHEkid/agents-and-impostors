@@ -12,6 +12,7 @@ export interface Player {
   operation?: string;
   eliminated?: boolean;
   isHost?: boolean;
+  hasVoted?:boolean;
 }
 
 export interface RoundResult {
@@ -59,6 +60,7 @@ export interface GameState {
   totalRounds?: number;
   submittedPlayers?: string[];
   votedPlayers?: string[];
+  timer?:number;
   results?: Array<{
     username: string;
     team: string;
