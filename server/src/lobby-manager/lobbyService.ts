@@ -12,7 +12,22 @@ export const generateLobbyCode = (): string => {
 };
 
 export async function createLobby(username: string): Promise<{ lobbyId: string; lobbyCode: string }> {
+    // Validate username before creating lobby
+    if (!isValidUsername(username)) {
+        throw new Error("Invalid username. Must be 2-20 characters, alphanumeric and underscores only.");
+    }
+
     const db = getDB();
+    
+    // Check if username is taken in any active lobby
+    const usernameTakenInAnyLobby = await db.get(
+        "SELECT * FROM players p JOIN lobbies l ON p.lobby_id = l.id WHERE p.username = ? AND l.status != 'completed'", 
+        [username]
+    );
+    if (usernameTakenInAnyLobby) {
+        throw new Error("Username is already taken in an active game.");
+    }
+
     const lobbyCode = generateLobbyCode();
     // Generate a unique lobbyId (simple random string for now, could be UUID)
     const lobbyId = Math.random().toString(36).substring(2, 10); 

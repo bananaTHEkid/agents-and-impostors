@@ -62,16 +62,10 @@ In Triple, players are secretly assigned to one of two teams:
 
 The overall game winner is typically determined by the team that wins the majority of the rounds. Specific game modes might have a final objective or a point system that determines the ultimate victor.
 
-### Player Elimination
-
-- During each round, players can discuss and then vote to eliminate a player they suspect of being an Impostor.
-- Being voted out means the player is removed from the current round's activities (e.g., cannot participate in discussions, voting, or tasks for that round).
-- Player eliminations are typically for the current round only. At the start of a new round, all players (including those previously eliminated) are usually brought back into the game for new team assignments and objectives, as indicated by the `startNewRound` event which resets player states. Eliminations primarily serve to determine the winner of that specific round.
-
 ### Game Rounds
 
 - The game progresses in a series of rounds.
-- **Start of a Round:** At the beginning of each round (after the first), team assignments may be shuffled (or remain the same, depending on game settings), new tasks or objectives might be assigned, and any players eliminated in the previous round are typically reset and brought back into play. The game phase is set (e.g., to `TEAM_ASSIGN`).
+- **Start of a Round:** At the beginning of each round (after the first), team assignments may be shuffled (or remain the same, depending on game settings), new tasks or objectives might be assigned. The game phase is set (e.g., to `TEAM_ASSIGN`).
 - **End of a Round:** A round ends when one of the round win conditions is met. Round results are calculated and displayed, and then the game either proceeds to a new round (triggering `newRound` event) or concludes if overall game win conditions are met (triggering `gameResults`).
 
 ## Operations

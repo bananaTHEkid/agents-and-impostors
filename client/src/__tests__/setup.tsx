@@ -56,6 +56,37 @@ export const triggerSocketEvent = (eventName: string, data: unknown) => {
   }
 };
 
+// Helper to reset the mock socket state between tests
+export const resetMockSocket = () => {
+  // Clear registered handlers
+  for (const key of Object.keys(eventHandlers)) {
+    delete eventHandlers[key];
+  }
+
+  // Restore default mocked implementations
+  mockSocket.emit = vi.fn((_event: string, data?: unknown, callback?: (response: { success: boolean; [key: string]: unknown }) => void): typeof mockSocket => {
+    if (typeof callback === 'function') {
+      callback({ success: true, ...(typeof data === 'object' && data !== null ? data : {}) });
+    }
+    return mockSocket;
+  });
+  mockSocket.on = vi.fn((eventName: string, callback: (data: unknown) => void) => {
+    if (!eventHandlers[eventName]) eventHandlers[eventName] = [];
+    eventHandlers[eventName].push(callback);
+  });
+  mockSocket.off = vi.fn((eventName: string, callback?: (data: unknown) => void) => {
+    if (eventHandlers[eventName]) {
+      if (callback) {
+        eventHandlers[eventName] = eventHandlers[eventName].filter(cb => cb !== callback);
+      } else {
+        delete eventHandlers[eventName];
+      }
+    }
+  });
+  mockSocket.connect = vi.fn();
+  mockSocket.disconnect = vi.fn();
+};
+
 // Default value for the mocked SocketContext
 export const mockSocketContextDefaultValue = {
   socket: mockSocket, // Crucially, use the exported mockSocket instance

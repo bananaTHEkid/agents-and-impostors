@@ -3,6 +3,7 @@ export enum GamePhase {
   TEAM_ASSIGNMENT = 'team_assignment',
   OPERATION_ASSIGNMENT = 'operation_assignment',
   VOTING = 'voting',
+  RESULTS = 'results',
 }
 
 export interface RoundResult {
@@ -21,6 +22,12 @@ export interface FinalResults {
         agents: number;
         impostors: number;
     };
+    players: Array<{
+        username: string;
+        team: 'agent' | 'impostor';
+        winStatus: 'win' | 'lose';
+        operation?: string;
+    }>;
 }
 
 export interface VoteValidationResult {

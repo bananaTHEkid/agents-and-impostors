@@ -101,16 +101,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
     // Initiale Spielerliste abrufen
     fetchPlayerList();
 
-    // Periodisches Aktualisieren der Spielerliste alle 3 Sekunden
-    const refreshInterval = setInterval(() => {
-      if (socket && socket.connected) {
-        fetchPlayerList();
-      }
-    }, 3000);
-
     const handlePlayerList = (data: Player[] | { players: Player[] }) => {
       console.log('[GameLobby] Received player-list:', data); // Debug-Log
       updatePlayers(data);
+    };
+
+    const handleLobbyState = (data: any) => {
+      console.log('[GameLobby] Received lobby-state:', data);
+      // Update players from the lobby state
+      if (data && data.players) {
+        updatePlayers({ players: data.players });
+      }
     };
 
     const handlePlayerJoined = (data: { username: string }) => {
@@ -149,6 +150,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
 
     // Event Listener registrieren
     socket.on("player-list", handlePlayerList);
+    socket.on("lobby-state", handleLobbyState);
     socket.on("player-joined", handlePlayerJoined);
     socket.on("player-left", handlePlayerLeft);
 
@@ -171,8 +173,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
     });
 
     return () => {
-      clearInterval(refreshInterval);
       socket.off("player-list", handlePlayerList);
+      socket.off("lobby-state", handleLobbyState);
       socket.off("player-joined", handlePlayerJoined);
       socket.off("player-left", handlePlayerLeft);
       socket.off("error");

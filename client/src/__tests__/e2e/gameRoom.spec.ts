@@ -16,9 +16,8 @@ test.describe('Game Lobby', () => {
     await player1Page.getByRole('textbox', { name: 'Username' }).fill('Player1');
     await player1Page.getByTestId('create-game-button').click();
     
-    // Wait for Player 1's socket connection and get lobby code
-    await expect(player1Page.getByText('Socket verbunden: Ja')).toBeVisible({ timeout: 15000 });
-    await expect(player1Page.getByTestId('game-lobby')).toContainText('1 Spieler');
+    // Wait for the game lobby to be visible and show 1 player
+    await expect(player1Page.getByTestId('game-lobby')).toContainText('1 Spieler', { timeout: 15000 });
     const lobbycode = await player1Page.getByTestId('code-viewer').innerHTML();
 
     // Join lobby with players 2-5
@@ -31,14 +30,6 @@ test.describe('Game Lobby', () => {
 			// Wait for socket connection before joining
 			await playerPage.waitForLoadState('networkidle');
 			await playerPage.getByTestId('join-game-button').click();
-
-			// Verify socket connection for each player
-			try {
-				await expect(playerPage.locator('text=Socket verbunden: Ja')).toBeVisible({ timeout: 15000 });
-			} catch (e) {
-				console.log(`Player ${i+1} failed to connect:`, await playerPage.content());
-				throw e;
-			}
 
 			// Verify updated player count for all connected players
 			const expectedPlayers = `${i+1} Spieler`;

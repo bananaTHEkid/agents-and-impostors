@@ -77,28 +77,55 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
         console.log(`Player ${username} disconnected from lobby ${lobbyCode}`);
         
         try {
-            // Remove from lobby in database
-            const result = await leaveLobby(lobbyCode, username);
+            // Import getDB and gameService for session cleanup
+            const { getDB } = await import('./db/db');
+            const gameService = await import('./game-logic/gameService');
+            const db = getDB();
             
-            if (result.success) {
-                // Notify other players in the lobby
-                io.to(lobbyCode).emit('playerLeft', {
-                    username: username,
-                    lobbyClosed: result.lobbyClosed
-                });
-
-                if (result.lobbyClosed) {
-                    console.log(`Lobby ${lobbyCode} was closed (no players remaining)`);
+            // Get lobby info to check game phase
+            const lobby = await db.get("SELECT id, phase, status FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+            
+            if (lobby) {
+                // Remove connection session for both waiting and in-progress games
+                // This allows proper cleanup regardless of game state
+                try {
+                    await gameService.removeConnectionSession(socketId);
+                } catch (sessionError) {
+                    console.error(`Error removing connection session for ${username}:`, sessionError);
                 }
-            } else {
-                console.error(`Failed to remove player ${username} from lobby ${lobbyCode}:`, result.error);
+                
+                // Only delete player if lobby is still in waiting phase
+                // If game is in progress, keep the player record for reconnection
+                const shouldDeletePlayer = lobby.phase === 'waiting' || lobby.status === 'completed';
+                
+                if (shouldDeletePlayer) {
+                    // Remove from lobby in database
+                    const result = await leaveLobby(lobbyCode, username);
+                    
+                    if (result.success) {
+                        // Notify other players in the lobby
+                        io.to(lobby.id).emit('player-left', {
+                            username: username,
+                            lobbyClosed: result.lobbyClosed
+                        });
+
+                        if (result.lobbyClosed) {
+                            console.log(`Lobby ${lobbyCode} was closed (no players remaining)`);
+                        }
+                    } else {
+                        console.error(`Failed to remove player ${username} from lobby ${lobbyCode}:`, result.error);
+                    }
+                } else {
+                    // Game in progress - keep player for reconnection
+                    console.log(`Game in progress for ${username} - keeping player record for reconnection`);
+                }
             }
         } catch (error) {
             console.error(`Error handling disconnect for ${username}:`, error);
         }
     }
     
-    // Clean up connection mappings
+    // Clean up connection mappings (always remove socket connection)
     removeConnection(socketId);
 }
 

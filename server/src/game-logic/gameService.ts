@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { getDB } from '../db/db';
+import { getDB, withTransaction } from '../db/db';
 import { GamePhase, RoundResult, FinalResults, VoteValidationResult, Lobby } from './types';
 import { GAME_CONFIG, OPERATION_CONFIG } from './config';
 
@@ -79,6 +79,45 @@ export async function validateVote(
     } catch (error) {
         console.error("Error validating vote:", error);
         return { isValid: false, error: "Internal server error during vote validation" };
+    }
+}
+
+/**
+ * Records a vote in a transaction to prevent race conditions
+ * @param lobbyId - Lobby ID
+ * @param voter - Username of voter
+ * @param target - Username of vote target
+ * @param roundNumber - Current round number
+ * @returns true if vote recorded, false otherwise
+ */
+export async function recordVote(
+    lobbyId: string,
+    voter: string,
+    target: string,
+    roundNumber: number
+): Promise<boolean> {
+    try {
+        await withTransaction(async (db) => {
+            // Re-validate vote wasn't already cast (prevent race condition)
+            const existingVote = await db.get(`
+                SELECT id FROM votes 
+                WHERE lobby_id = ? AND voter = ? AND round_number = ?
+            `, [lobbyId, voter, roundNumber]);
+
+            if (existingVote) {
+                throw new Error("Vote already recorded for this player this round");
+            }
+
+            // Record the vote
+            await db.run(`
+                INSERT INTO votes (lobby_id, voter, target, round_number) 
+                VALUES (?, ?, ?, ?)
+            `, [lobbyId, voter, target, roundNumber]);
+        });
+        return true;
+    } catch (error) {
+        console.error("Error recording vote:", error);
+        return false;
     }
 }
 
@@ -162,9 +201,12 @@ export async function calculateRoundResults(lobbyId: string): Promise<RoundResul
         .filter(([_, count]) => count === maxVotes)
         .map(([player]) => player);
 
-    for (const player of eliminatedPlayers) {
-        await db.run(`UPDATE players SET eliminated = 1 WHERE lobby_id = ? AND username = ?`, [lobbyId, player]);
-    }
+    // Use transaction for atomic elimination updates
+    await withTransaction(async (db) => {
+        for (const player of eliminatedPlayers) {
+            await db.run(`UPDATE players SET eliminated = 1 WHERE lobby_id = ? AND username = ?`, [lobbyId, player]);
+        }
+    });
 
     const remainingPlayers = players.filter(p => !eliminatedPlayers.includes(p.username));
     const teamCounts = remainingPlayers.reduce((acc, player) => {
@@ -204,7 +246,7 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
     });
 
     const players = await db.all(`
-        SELECT p.username, p.team,
+        SELECT p.username, p.team, p.operation, p.win_status,
                (SELECT COUNT(*) FROM votes v WHERE v.target = p.username AND v.lobby_id = p.lobby_id) as times_voted_out,
                (SELECT COUNT(*) FROM rounds r WHERE r.lobby_id = p.lobby_id AND r.winner = p.team) as rounds_won
         FROM players p
@@ -254,7 +296,13 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
         roundResults,
         mvp,
         totalRounds: rounds.length,
-        teamScores
+        teamScores,
+        players: players.map(p => ({
+            username: p.username,
+            team: p.team as 'agent' | 'impostor',
+            winStatus: (p.win_status as 'win' | 'lose') || 'lose',
+            operation: p.operation
+        }))
     };
 }
 
@@ -309,45 +357,58 @@ export async function assignTeamsAndOperations(
     );
     if (!impostorConfig) throw new Error("Invalid number of players for impostor assignment.");
 
-    const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
-    const impostors = shuffledPlayers.slice(0, impostorConfig.count);
-    const agents = shuffledPlayers.slice(impostorConfig.count);
+    // Use transaction for atomic team and operation assignment
+    await withTransaction(async (db) => {
+        const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
+        const impostors = shuffledPlayers.slice(0, impostorConfig.count);
+        const agents = shuffledPlayers.slice(impostorConfig.count);
 
-    const teams: Record<string, string> = {};
-    impostors.forEach(player => teams[player] = "impostor");
-    agents.forEach(player => teams[player] = "agent");
+        const teams: Record<string, string> = {};
+        impostors.forEach(player => teams[player] = "impostor");
+        agents.forEach(player => teams[player] = "agent");
 
-    for (const player of players) {
-        await db.run("UPDATE players SET team = ? WHERE username = ? AND lobby_id = ?", [teams[player], player, lobbyId]);
-    }
-
-    const shuffledOperations = GAME_CONFIG.OPERATIONS
-        .filter(op => op.name in OPERATION_CONFIG) // Ensure operation exists in config
-        .sort(() => 0.5 - Math.random());
-
-    const playerOperations = players.map((player, index) => ({
-        player,
-        operation: shuffledOperations[index % shuffledOperations.length] // Use modulo to avoid running out of operations
-    }));
-
-    for (const { player, operation } of playerOperations) {
-        if (operation) { // Ensure operation is not undefined
-             await db.run("UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?", [operation.name, player, lobbyId]);
+        // Assign teams atomically
+        for (const player of players) {
+            await db.run("UPDATE players SET team = ? WHERE username = ? AND lobby_id = ?", [teams[player], player, lobbyId]);
         }
-    }
-    
-    // Call generateOperationInfo with io and the socketId getter
-    await generateOperationInfo(lobbyId, players, teams, io, getSocketIdByUsername); // Correctly passing the getter
 
-    // This emit might be better placed in server.ts after calling this service
-    io.to(lobbyId).emit("team-assignment", {
-        impostors,
-        agents,
-        phase: GamePhase.OPERATION_ASSIGNMENT, // Using GamePhase from types
-        requiresAcknowledgment: true // This field might need re-evaluation
+        // Assign operations atomically
+        const shuffledOperations = GAME_CONFIG.OPERATIONS
+            .filter(op => op.name in OPERATION_CONFIG)
+            .sort(() => 0.5 - Math.random());
+
+        const playerOperations = players.map((player, index) => ({
+            player,
+            operation: shuffledOperations[index % shuffledOperations.length]
+        }));
+
+        for (const { player, operation } of playerOperations) {
+            if (operation) {
+                 await db.run("UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?", [operation.name, player, lobbyId]);
+            }
+        }
     });
 
-    return { impostors, agents, playerOperations };
+    // Generate operation info and notify players (outside transaction)
+    const teamData = await db.all(`SELECT username, team FROM players WHERE lobby_id = ?`, [lobbyId]);
+    const teams: Record<string, string> = {};
+    teamData.forEach(p => teams[p.username] = p.team);
+    
+    await generateOperationInfo(lobbyId, players, teams, io, getSocketIdByUsername);
+
+    io.to(lobbyId).emit("team-assignment", {
+        teams,
+        phase: GamePhase.OPERATION_ASSIGNMENT,
+        requiresAcknowledgment: true
+    });
+
+    // Return player operations for logging
+    const playerOperations = players.map(async (player) => {
+        const op = await db.get("SELECT operation FROM players WHERE username = ? AND lobby_id = ?", [player, lobbyId]);
+        return { player, operation: op?.operation };
+    });
+
+    return { playerOperations: await Promise.all(playerOperations) };
 }
 
 
@@ -383,6 +444,10 @@ export async function endRound(
             lobbies[lobbyId].status = 'completed';
             lobbies[lobbyId].phase = GamePhase.WAITING; // Or a new 'completed' phase
         }
+        
+        // Schedule cleanup of completed lobby
+        scheduleLobbyCleanupp(lobbyId);
+        
         return 'game_end';
     }
 
@@ -390,3 +455,96 @@ export async function endRound(
     await startNewRound(lobbyId, lobbyInfo.current_round + 1, lobbies); 
     return 'next_round';
 }
+
+/**
+ * Cleans up a completed lobby (removes from memory after delay)
+ * @param lobbyId - Lobby ID to clean up
+ */
+export const scheduleLobbyCleanupp = (lobbyId: string, delayMs: number = 300000) => {
+    // Clean up after 5 minutes
+    setTimeout(async () => {
+        try {
+            const db = getDB();
+            // Delete all associated data
+            await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+            await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
+            await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
+            await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
+            console.log(`Completed lobby ${lobbyId} cleaned up`);
+        } catch (error) {
+            console.error(`Error cleaning up lobby ${lobbyId}:`, error);
+        }
+    }, delayMs);
+};
+
+/**
+ * Saves a connection session to database for recovery
+ * @param socketId - Socket ID
+ * @param username - Player username
+ * @param lobbyId - Lobby ID
+ * @param lobbyCode - Lobby code
+ */
+export const saveConnectionSession = async (
+    socketId: string,
+    username: string,
+    lobbyId: string,
+    lobbyCode: string
+): Promise<void> => {
+    try {
+        const db = getDB();
+        await db.run(`
+            INSERT OR REPLACE INTO connection_sessions (socket_id, username, lobby_id, lobby_code, last_heartbeat)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `, [socketId, username, lobbyId, lobbyCode]);
+    } catch (error) {
+        console.error("Error saving connection session:", error);
+    }
+};
+
+/**
+ * Retrieves a saved connection session for recovery
+ * @param username - Player username
+ * @returns Connection session data or null
+ */
+export const getConnectionSession = async (username: string): Promise<any | null> => {
+    try {
+        const db = getDB();
+        return await db.get(`
+            SELECT * FROM connection_sessions 
+            WHERE username = ? 
+            ORDER BY last_heartbeat DESC LIMIT 1
+        `, [username]);
+    } catch (error) {
+        console.error("Error retrieving connection session:", error);
+        return null;
+    }
+};
+
+/**
+ * Removes a connection session
+ * @param socketId - Socket ID to remove
+ */
+export const removeConnectionSession = async (socketId: string): Promise<void> => {
+    try {
+        const db = getDB();
+        await db.run("DELETE FROM connection_sessions WHERE socket_id = ?", [socketId]);
+    } catch (error) {
+        console.error("Error removing connection session:", error);
+    }
+};
+
+/**
+ * Cleans up stale connection sessions (older than 1 hour)
+ */
+export const cleanupStaleConnections = async (): Promise<void> => {
+    try {
+        const db = getDB();
+        await db.run(`
+            DELETE FROM connection_sessions 
+            WHERE datetime(last_heartbeat) < datetime('now', '-1 hour')
+        `);
+        console.log("Stale connections cleaned up");
+    } catch (error) {
+        console.error("Error cleaning up stale connections:", error);
+    }
+};

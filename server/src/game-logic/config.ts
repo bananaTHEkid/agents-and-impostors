@@ -60,7 +60,53 @@ export const OPERATION_CONFIG: Record<
                 message: `You have a grudge against ${randomOpponent}. You might want to focus your suspicions or actions towards them.`
             };
         },
-        modifyWinCondition: async () => {},
+        modifyWinCondition: async (lobbyId, players, votes, teams, db, roundResult) => {
+            try {
+                const grudgePlayers = await db.all(
+                    "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'grudge'",
+                    [lobbyId]
+                );
+
+                // Determine eliminated players from roundResult if available, else query DB
+                let eliminatedNames: string[] = [];
+                if (roundResult && Array.isArray(roundResult.eliminatedPlayers)) {
+                    eliminatedNames = roundResult.eliminatedPlayers;
+                } else {
+                    const eliminatedRows = await db.all(
+                        "SELECT username FROM players WHERE lobby_id = ? AND eliminated = 1",
+                        [lobbyId]
+                    );
+                    eliminatedNames = eliminatedRows.map((r: any) => r.username);
+                }
+
+                for (const player of grudgePlayers) {
+                    if (!player.operation_info) continue;
+                    try {
+                        const info = JSON.parse(player.operation_info);
+                        const target = info?.grudgeTarget || info?.revealedPlayer || null;
+                        if (!target) continue;
+
+                        const targetWasEliminated = eliminatedNames.includes(target);
+                        if (targetWasEliminated) {
+                            // Mark the grudge-holder as a winner
+                            await db.run(
+                                "UPDATE players SET win_status = ? WHERE lobby_id = ? AND username = ?",
+                                ['win', lobbyId, player.username]
+                            );
+                            // Mark operation as processed to avoid double application
+                            await db.run(
+                                "UPDATE players SET operation_info = json_patch(operation_info, ?) WHERE lobby_id = ? AND username = ?",
+                                [JSON.stringify({ grudgeTriggered: true }), lobbyId, player.username]
+                            );
+                        }
+                    } catch (err) {
+                        console.error(`Error processing grudge for player ${player.username}:`, err);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in grudge.modifyWinCondition:', error);
+            }
+        },
     },
     "infatuation": {
         fields: [],
@@ -161,7 +207,32 @@ export const OPERATION_CONFIG: Record<
             const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
             return { revealedPlayer: randomPlayer, team: teams[randomPlayer] };
         },
-        modifyWinCondition: async () => {},
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            try {
+                const tipPlayers = await db.all(
+                    "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'anonymous tip'",
+                    [lobbyId]
+                );
+                for (const player of tipPlayers) {
+                    if (!player.operation_info) continue;
+                    try {
+                        const info = JSON.parse(player.operation_info);
+                        // Ensure the info indicates it was delivered (non-hidden)
+                        if (!info.revealed) {
+                            info.revealed = true;
+                            await db.run(
+                                "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
+                                [JSON.stringify(info), lobbyId, player.username]
+                            );
+                        }
+                    } catch (err) {
+                        console.error(`Error processing anonymous tip for player ${player.username}:`, err);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in anonymous tip.modifyWinCondition:', error);
+            }
+        },
     },
     "danish intelligence": {
         fields: [],
@@ -185,7 +256,32 @@ export const OPERATION_CONFIG: Record<
                 message: `Your intelligence reveals that ${revealedImpostor} is an impostor and ${revealedAgent} is an agent.`
             };
         },
-        modifyWinCondition: async () => {}
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            try {
+                const intelPlayers = await db.all(
+                    "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'danish intelligence'",
+                    [lobbyId]
+                );
+                for (const player of intelPlayers) {
+                    if (!player.operation_info) continue;
+                    try {
+                        const info = JSON.parse(player.operation_info);
+                        // Mark intel as revealed/processed to avoid re-processing
+                        if (!info.revealed) {
+                            info.revealed = true;
+                            await db.run(
+                                "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
+                                [JSON.stringify(info), lobbyId, player.username]
+                            );
+                        }
+                    } catch (err) {
+                        console.error(`Error processing danish intelligence for player ${player.username}:`, err);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in danish intelligence.modifyWinCondition:', error);
+            }
+        }
     },
     "confession": {
         fields: ["targetPlayer"],
@@ -236,7 +332,31 @@ export const OPERATION_CONFIG: Record<
                 message: `Your old photographs show that ${selectedPlayers[0]} and ${selectedPlayers[1]} are on the same team.`
             };
         },
-        modifyWinCondition: async () => {}
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            try {
+                const photoPlayers = await db.all(
+                    "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'old photographs'",
+                    [lobbyId]
+                );
+                for (const player of photoPlayers) {
+                    if (!player.operation_info) continue;
+                    try {
+                        const info = JSON.parse(player.operation_info);
+                        if (!info.revealed) {
+                            info.revealed = true;
+                            await db.run(
+                                "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
+                                [JSON.stringify(info), lobbyId, player.username]
+                            );
+                        }
+                    } catch (err) {
+                        console.error(`Error processing old photographs for player ${player.username}:`, err);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in old photographs.modifyWinCondition:', error);
+            }
+        }
     },
     "defector": {
         fields: ["targetPlayer"],
@@ -280,40 +400,134 @@ export const OPERATION_CONFIG: Record<
             }
         }
     },
-    // Placeholder for "scapegoat" if it's used from GAME_CONFIG.OPERATIONS
+    // SCAPEGOAT: Player wins only if voted out
     "scapegoat": {
-        fields: [], // Define fields if needed
-        types: [],  // Define types if needed
-        generateInfo: (players, teams, self) => {
-            // Define how information is generated for the player
-            return { message: "Scapegoat operation details not yet implemented." };
+        fields: [],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            return {
+                success: true,
+                message: "You are the scapegoat. You will only win if you are voted out!",
+                winCondition: "must_be_voted_out"
+            };
         },
-        modifyWinCondition: async () => {
-            // Define how this operation modifies win conditions, if at all
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            // Get scapegoat players
+            const scapegoats = await db.all(
+                "SELECT username FROM players WHERE lobby_id = ? AND operation = 'scapegoat'",
+                [lobbyId]
+            );
+            
+            // Get eliminated players in this round
+            const eliminated = await db.all(
+                "SELECT username FROM players WHERE lobby_id = ? AND eliminated = 1",
+                [lobbyId]
+            );
+            
+            const eliminatedNames = eliminated.map((p: any) => p.username);
+            
+            for (const scapegoat of scapegoats) {
+                const isEliminated = eliminatedNames.includes(scapegoat.username);
+                const shouldWin = isEliminated; // Win condition is being voted out
+                
+                await db.run(
+                    "UPDATE players SET win_status = ? WHERE lobby_id = ? AND username = ?",
+                    [shouldWin ? 'win' : 'lose', lobbyId, scapegoat.username]
+                );
+            }
         }
     },
-    // Placeholder for "secret intel" if it's used from GAME_CONFIG.OPERATIONS
+    // SECRET INTEL: Choose 2 names. If one or both are virus agents, revealed. If both are service agents, revealed.
     "secret intel": {
-        fields: [], // Define fields if needed
-        types: [],  // Define types if needed
-        generateInfo: (players, teams, self) => {
-            // Define how information is generated for the player
-            return { message: "Secret Intel operation details not yet implemented." };
+        fields: ["targetPlayer1", "targetPlayer2"],
+        types: ["string", "string"],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const otherPlayers = players.filter(p => p !== self);
+            return {
+                success: true,
+                message: "Choose two players to investigate with your secret intel.",
+                availablePlayers: otherPlayers
+            };
         },
-        modifyWinCondition: async () => {
-            // Define how this operation modifies win conditions, if at all
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            const intelPlayers = await db.all(
+                "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'secret intel'",
+                [lobbyId]
+            );
+            
+            for (const player of intelPlayers) {
+                if (!player.operation_info) continue;
+                try {
+                    const info = JSON.parse(player.operation_info);
+                    if (!info.targetPlayer1 || !info.targetPlayer2) continue;
+                    
+                    const target1 = await db.get(
+                        "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, info.targetPlayer1]
+                    );
+                    const target2 = await db.get(
+                        "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, info.targetPlayer2]
+                    );
+                    
+                    if (!target1 || !target2) continue;
+                    
+                    // Determine revelation
+                    const oneOrBothVirus = target1.team === 'impostor' || target2.team === 'impostor';
+                    const bothService = target1.team === 'agent' && target2.team === 'agent';
+                    const shouldReveal = oneOrBothVirus || bothService;
+                    
+                    if (shouldReveal) {
+                        info.revealed = {
+                            target1Name: info.targetPlayer1,
+                            target1Team: target1.team,
+                            target2Name: info.targetPlayer2,
+                            target2Team: target2.team,
+                            message: oneOrBothVirus 
+                                ? "At least one of your targets is a virus agent!" 
+                                : "Both of your targets are service agents!"
+                        };
+                    } else {
+                        info.revealed = {
+                            message: "One is a virus agent and one is a service agent (no revelation)"
+                        };
+                    }
+                    
+                    await db.run(
+                        "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
+                        [JSON.stringify(info), lobbyId, player.username]
+                    );
+                } catch (error) {
+                    console.error(`Error processing secret intel for player ${player.username}:`, error);
+                }
+            }
         }
     },
-    // Placeholder for "secret tip" if it's used from GAME_CONFIG.OPERATIONS
+    // SECRET TIP: Given one name and their association
     "secret tip": {
-        fields: [], // Define fields if needed
-        types: [],  // Define types if needed
-        generateInfo: (players, teams, self) => {
-            // Define how information is generated for the player
-            return { message: "Secret Tip operation details not yet implemented." };
+        fields: [],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const otherPlayers = players.filter(p => p !== self);
+            if (otherPlayers.length === 0) {
+                return {
+                    success: false,
+                    message: "No other players available for secret tip."
+                };
+            }
+            // Pick a random other player and reveal their association
+            const randomTarget = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+            const targetTeam = teams[randomTarget];
+            
+            return {
+                success: true,
+                tippedPlayerName: randomTarget,
+                tippedPlayerAssociation: targetTeam,
+                message: `You've received a secret tip: ${randomTarget} is a ${targetTeam === 'impostor' ? 'virus agent' : 'service agent'}!`
+            };
         },
         modifyWinCondition: async () => {
-            // Define how this operation modifies win conditions, if at all
+            // Secret tip doesn't modify win conditions
         }
     }
     // Ensure all operations listed in GAME_CONFIG.OPERATIONS have a corresponding entry here.

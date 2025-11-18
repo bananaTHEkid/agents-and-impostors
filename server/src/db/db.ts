@@ -65,7 +65,21 @@ export const initDB = async (useMemory = false) => {
                 lobby_id TEXT,
                 voter TEXT,
                 target TEXT,
+                round_number INTEGER,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lobby_id) REFERENCES lobbies(id)
+            )
+        `);
+
+        await dbInstance.run(`
+            CREATE TABLE IF NOT EXISTS connection_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                socket_id TEXT UNIQUE,
+                username TEXT,
+                lobby_id TEXT,
+                lobby_code TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_heartbeat DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lobby_id) REFERENCES lobbies(id)
             )
         `);
@@ -86,4 +100,25 @@ export const getDB = () => {
         throw new Error("Database not initialized. Call initDB() first.");
     }
     return dbInstance;
+};
+
+/**
+ * Executes a transaction - ensures atomic operations
+ * @param callback - Async function containing database operations
+ * @returns Result of the callback or null if transaction fails
+ */
+export const withTransaction = async <T>(
+    callback: (db: Database) => Promise<T>
+): Promise<T | null> => {
+    const db = getDB();
+    try {
+        await db.exec("BEGIN TRANSACTION");
+        const result = await callback(db);
+        await db.exec("COMMIT");
+        return result;
+    } catch (error) {
+        await db.exec("ROLLBACK");
+        console.error("Transaction failed, rolling back:", error);
+        throw error;
+    }
 };

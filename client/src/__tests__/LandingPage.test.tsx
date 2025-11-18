@@ -145,8 +145,9 @@ describe('LandingPage', () => {
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
 
+    // Correctly check the incoming event name via the _event parameter
     (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
-      if (typeof event === 'string' && event === 'join-lobby' && callback) {
+      if (typeof _event === 'string' && _event === 'join-lobby' && typeof callback === 'function') {
         callback({ success: false, error: 'Lobby not found' });
       }
       return mockSocket;

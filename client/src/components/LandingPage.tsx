@@ -20,6 +20,7 @@ interface ErrorData {
 interface CreateLobbyResponse {
   lobbyId: string;
   lobbyCode: string;
+  accessToken: string;
 }
 
 interface JoinLobbyResponse {
@@ -180,13 +181,22 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       const response = await axios.post<CreateLobbyResponse>(`${API_BASE_URL}/create-lobby`, {
         username: trimmedUsername,
       });
-      const { lobbyCode } = response.data;
+      const { lobbyCode, accessToken } = response.data;
 
       sessionStorage.setItem("lobbyCode", lobbyCode);
       sessionStorage.setItem("username", trimmedUsername);
       sessionStorage.setItem("isHost", "true");
-    } catch {
-      setErrorMessage("Failed to create lobby");
+      sessionStorage.setItem("accessToken", accessToken);
+      setIsLoading(false);
+      onJoinGame(lobbyCode);
+      saveToRecentGames(lobbyCode);
+    } catch (error) {
+      console.error("Error creating lobby:", error);
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        setErrorMessage(error.response.data.error);
+      } else {
+        setErrorMessage("Failed to create lobby");
+      }
       setIsLoading(false);
     }
   };
