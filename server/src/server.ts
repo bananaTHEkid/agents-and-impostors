@@ -19,6 +19,7 @@ const io = new Server(server, {
         credentials: true
     }
 });
+const playerOperationsByLobby: { [lobbyId: string]: any[] } = {};
 
 // Initialize SQLite database
 let dbInstance: any; // This might not be needed if all DB access goes through services. Kept for now.
@@ -48,9 +49,10 @@ app.post("/create-lobby", async (req: Request, res: Response) => {
     try {
         const { username } = req.body;
         const { lobbyId, lobbyCode } = await lobbyService.createLobby(username);
-        
+
         // Fetch initial player list (just the creator)
         const playerRows = await getDB().all("SELECT username FROM players WHERE lobby_id = ?", [lobbyId]);
+
         io.to(lobbyId).emit("player-list", { players: playerRows }); // Emit to the specific lobby room
 
         res.json({ lobbyId, lobbyCode });
@@ -147,7 +149,7 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
     // Handle game start logic
     socket.on("start-game", async ({ lobbyCode, rounds = 3 }) => {
         try {
-            const dbInstance = getDB(); // Keep for direct DB interactions not covered by services yet
+            const dbInstance = getDB();
             const lobby = await lobbyService.getLobby(lobbyCode);
 
             if (!lobby) {
@@ -172,27 +174,26 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
                 WHERE id = ?
             `, [rounds, GamePhase.TEAM_ASSIGNMENT, lobbyId]);
             
-            // Call gameService.startNewRound, which also sets phase to TEAM_ASSIGNMENT
-            // The above query already sets the phase, so startNewRound will just repeat it, which is fine.
-            // Or, modify startNewRound to not set phase if it's already set.
-            // For now, assuming startNewRound is idempotent or its phase setting is acceptable.
-            await gameService.startNewRound(lobbyId, 1, {}); // Pass empty object for lobbies if not used by startNewRound
+            await gameService.startNewRound(lobbyId, 1, {});
 
             io.to(lobbyId).emit("game-started", { 
                 message: "Game has started!",
-                players: playersInLobby.map(p => p.username), // Send player usernames
+                players: playersInLobby.map(p => p.username),
                 phase: GamePhase.TEAM_ASSIGNMENT
             });
 
-            console.log("Starting team assignment phase...");
+            // Assign teams and operations
             const { impostors, agents, playerOperations } = await gameService.assignTeamsAndOperations(
-                lobbyId, 
-                playersInLobby.map(p => p.username), 
-                io, 
-                connectionManager.getSocketId // Pass the getter function
+                lobbyId,
+                playersInLobby.map(p => p.username),
+                io,
+                connectionManager.getSocketId
             );
-            
-            // Update lobby phase to OPERATION_ASSIGNMENT in DB
+
+            // Store for later use in accept-assignment
+            playerOperationsByLobby[lobbyId] = playerOperations;
+
+            // Update lobby phase to OPERATION_ASSIGNMENT
             await dbInstance.run(
                 "UPDATE lobbies SET phase = ? WHERE id = ?",
                 [GamePhase.OPERATION_ASSIGNMENT, lobbyId]
@@ -204,39 +205,64 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
                 phase: GamePhase.OPERATION_ASSIGNMENT
             });
 
-            console.log("Teams assigned. Operation phase starting...");
-            console.log("Starting operation assignment...");
-
-            for (const { player, operation } of playerOperations) {
+            // Send operation only to the first player in order
+            if (playerOperations.length > 0) {
+                const { player, operation } = playerOperations[0];
                 if (operation) {
-                    const playerSocketId = connectionManager.getSocketId(player); // Use connectionManager
+                    const playerSocketId = connectionManager.getSocketId(player);
                     if (playerSocketId) {
-                        io.to(playerSocketId).emit("operation-assigned", {
-                            operation: operation.name
-                        });
+                        io.to(playerSocketId).emit("operation-assigned", { operation: operation.name });
+                        await dbInstance.run(
+                            "UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?",
+                            [lobbyId, player]
+                        );
                     }
-                    console.log(`Assigned operation '${operation.name}' to ${player}`);
                 }
             }
 
-            console.log("Operation phase completed.");
-            // Update lobby phase to VOTING in DB
-            await dbInstance.run(
-                "UPDATE lobbies SET phase = ? WHERE id = ?",
-                [GamePhase.VOTING, lobbyId]
-            );
-
-            io.to(lobbyId).emit("phase-change", {
-                phase: GamePhase.VOTING,
-                message: "Operation phase completed. Voting phase begins!"
-            });
-
-            console.log("Voting phase has begun");
+            // Do NOT send operations to all players here!
+            // The rest will be handled by the accept-assignment event
 
         } catch (error) {
             socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
         }
     });
+
+    socket.on("accept-assignment", async ({ lobbyId, username }) => {
+    await dbInstance.run(
+        "UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?",
+        [lobbyId, username]
+    );
+
+    // Find next player who hasn't accepted
+    const nextPlayerRow = await dbInstance.get(
+        "SELECT username FROM players WHERE lobby_id = ? AND operation_accepted = 0 ORDER BY id ASC",
+        [lobbyId]
+    );
+    if (nextPlayerRow) {
+        const opObj = playerOperationsByLobby[lobbyId]?.find(po => po.player === nextPlayerRow.username);
+        if (opObj && opObj.operation) {
+            const playerSocketId = connectionManager.getSocketId(nextPlayerRow.username);
+            if (playerSocketId) {
+                io.to(playerSocketId).emit("operation-assigned", { operation: opObj.operation.name });
+                await dbInstance.run(
+                    "UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?",
+                    [lobbyId, nextPlayerRow.username]
+                );
+            }
+        }
+    } else {
+        // All players have accepted, move to voting phase
+        await dbInstance.run(
+            "UPDATE lobbies SET phase = ? WHERE id = ?",
+            [GamePhase.VOTING, lobbyId]
+        );
+        io.to(lobbyId).emit("phase-change", {
+            phase: GamePhase.VOTING,
+            message: "All assignments complete. Voting phase begins!"
+        });
+    }
+});
 
     socket.on("use-confession", async ({ targetPlayer, lobbyId }) => {
         try {

@@ -68,7 +68,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     return saved ? JSON.parse(saved) as PlayerOperation : null;
   });
   const [operationTargetPlayer, setOperationTargetPlayer] = useState<string | null>(null);
- 
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const username: string = sessionStorage.getItem("username") ?? "";
 
   // Save state to sessionStorage whenever it changes
@@ -177,21 +177,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
-socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
-      console.log(`Operation details received for ${data.operation}:`, data.info);
-      setMyOperation({ name: data.operation, details: data.info, used: data.info.confessionMade || !!data.info.targetPlayer });
- 
-      // Add a user-friendly message about their prepared operation
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          // Customize this message based on the operation and its info for better UX
-          text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
-        },
-      ]);
-    });
-socket.on("operation-used", (data: { success: boolean; message?: string }) => {
+    socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
+          console.log(`Operation details received for ${data.operation}:`, data.info);
+          setMyOperation({ name: data.operation, details: data.info, used: data.info.confessionMade || !!data.info.targetPlayer });
+    
+          // Add a user-friendly message about their prepared operation
+          setMessages((prev) => [
+            ...prev,
+            {
+              type: "system",
+              // Customize this message based on the operation and its info for better UX
+              text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
+            },
+          ]);
+        });
+    socket.on("operation-used", (data: { success: boolean; message?: string }) => {
       if (data.success) {
         setMessages((prev) => [
           ...prev,
@@ -568,7 +568,24 @@ socket.on("operation-used", (data: { success: boolean; message?: string }) => {
               {errorMessage}
             </Alert>
           )}
-
+          {showAssignmentModal && myOperation && (
+            <Alert variant="info" className="mt-4 text-center">
+              <h5 className="mb-3">Your Operation: {myOperation.name}</h5>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (socket) {
+                    socket.emit("accept-assignment", { lobbyId: lobbyCode, username });
+                  }
+                  setShowAssignmentModal(false);
+                  setMyOperation(null);
+                }}
+                data-testid="accept-assignment-btn"
+              >
+                Accept Assignment
+              </Button>
+            </Alert>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Game content area */}
             <div className="lg:col-span-2">

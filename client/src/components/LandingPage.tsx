@@ -177,7 +177,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     setErrorMessage("");
 
     try {
-      
       const response = await axios.post<CreateLobbyResponse>(`${API_BASE_URL}/create-lobby`, {
         username: trimmedUsername,
       });
@@ -186,14 +185,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       sessionStorage.setItem("lobbyCode", lobbyCode);
       sessionStorage.setItem("username", trimmedUsername);
       sessionStorage.setItem("isHost", "true");
-
-      socket?.emit("join-lobby", {
-        username: trimmedUsername,
-        lobbyCode,
-      });
-
-      // Call onJoinGame immediately after successful lobby creation
-      onJoinGame(lobbyCode);
     } catch {
       setErrorMessage("Failed to create lobby");
       setIsLoading(false);

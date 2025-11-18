@@ -53,6 +53,8 @@ export const initDB = async (useMemory = false) => {
                 operation_info TEXT,
                 eliminated INTEGER DEFAULT 0,
                 win_status TEXT,
+                operation_assigned INTEGER DEFAULT 0,   -- NEW: Has the player received their assignment?
+                operation_accepted INTEGER DEFAULT 0,   -- NEW: Has the player accepted their assignment?
                 FOREIGN KEY (lobby_id) REFERENCES lobbies(id)
             )
         `);

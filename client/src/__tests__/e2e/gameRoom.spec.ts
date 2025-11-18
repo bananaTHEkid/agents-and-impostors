@@ -50,11 +50,9 @@ test.describe('Game Lobby', () => {
     // check activated start game button if at least five players are in a lobby (for the host)
     await expect(player1Page.getByTestId('start-game-button')).toBeEnabled();
     await player1Page.getByTestId('start-game-button').click();
-    
-
 
     // Cleanup
-    await Promise.all(contexts.map(context => context.close()));
+    //await Promise.all(contexts.map(context => context.close()));
 	});
 
 
