@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import App from '../App';
-import { mockSocket, triggerSocketEvent } from './setup';
-import { SocketProvider } from '../contexts/SocketContext';
-import { SocketEventData } from '../types/index';
+import App from '../../App';
+import { mockSocket, triggerSocketEvent } from '../utils/setup';
+import { SocketProvider } from '../../contexts/SocketContext';
+import { SocketEventData } from '../../types/index';
 
 describe('App Component', () => {
   beforeEach(() => {

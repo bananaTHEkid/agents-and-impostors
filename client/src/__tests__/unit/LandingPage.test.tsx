@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest'; // Import the matchers
-import LandingPage from '../components/LandingPage';
+import LandingPage from '../../components/LandingPage';
 import axios from 'axios';
-import { mockSocket, triggerSocketEvent } from './setup';
-import './setup';
+import { mockSocket, triggerSocketEvent } from '../utils/setup';
+import '../utils/setup';
 
 // Define types for socket mock implementations
 
@@ -115,10 +115,10 @@ describe('LandingPage', () => {
       await user.click(createButton);
     });
 
-    // Wait for error message
+    // Wait for error message to appear
     await waitFor(() => {
       expect(screen.getByText(/failed to create lobby/i)).toBeInTheDocument();
-    });
+    }, { timeout: 3000 });
 
     // Verify onJoinGame was not called
     expect(mockOnJoinGame).not.toHaveBeenCalled();

@@ -1,10 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-// Test suite for Game Lobby
-test.describe('Game Lobby', () => { 
-
-    
-  test('should allow five players to join the game lobby', async ({ browser }) => {
+// Test suite for Game Room
+test.describe('Game Room', () => {
+  test('should start game and transition to game room when host clicks start', async ({ browser }) => {
     // Create contexts and pages for all players
     const contexts = await Promise.all([...Array(5)].map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map(context => context.newPage()));
@@ -12,7 +10,7 @@ test.describe('Game Lobby', () => {
     const [player1Page] = pages;
 
     // Player 1 creates lobby
-    await player1Page.goto('http://localhost:5000/');
+    await player1Page.goto('/');
     await player1Page.getByRole('textbox', { name: 'Username' }).fill('Player1');
     await player1Page.getByTestId('create-game-button').click();
     
@@ -22,29 +20,30 @@ test.describe('Game Lobby', () => {
 
     // Join lobby with players 2-5
     for(let i = 1; i < 5; i++) {
-			const playerPage = pages[i];
-			await playerPage.goto('http://localhost:5000/');
-			await playerPage.getByRole('textbox', { name: 'Username' }).fill(`Player${i+1}`);
-			await playerPage.getByLabel('Lobby Code').fill(lobbycode);
-			
-			// Wait for socket connection before joining
-			await playerPage.waitForLoadState('networkidle');
-			await playerPage.getByTestId('join-game-button').click();
+      const playerPage = pages[i];
+      await playerPage.goto('/');
+      await playerPage.getByRole('textbox', { name: 'Username' }).fill(`Player${i+1}`);
+      await playerPage.getByLabel('Lobby Code').fill(lobbycode);
+      
+      // Wait for socket connection before joining
+      await playerPage.waitForLoadState('networkidle');
+      await playerPage.getByTestId('join-game-button').click();
 
-			// Verify updated player count for all connected players
-			const expectedPlayers = `${i+1} Spieler`;
-			for(let j = 0; j <= i; j++) {
-				await expect(pages[j].getByTestId('game-lobby')).toContainText(expectedPlayers, { timeout: 120000 });
-			}
+      // Verify updated player count for all connected players
+      const expectedPlayers = `${i+1} Spieler`;
+      for(let j = 0; j <= i; j++) {
+        await expect(pages[j].getByTestId('game-lobby')).toContainText(expectedPlayers, { timeout: 120000 });
+      }
     }
 
-    // check activated start game button if at least five players are in a lobby (for the host)
+    // Check activated start game button if at least 5 players are in a lobby (for the host)
     await expect(player1Page.getByTestId('start-game-button')).toBeEnabled();
     await player1Page.getByTestId('start-game-button').click();
 
+    // Wait for game room to appear after game starts
+    await expect(player1Page.getByTestId('game-room')).toBeVisible({ timeout: 30000 });
+
     // Cleanup
-    //await Promise.all(contexts.map(context => context.close()));
-	});
-
-
+    await Promise.all(contexts.map(context => context.close()));
+  });
 });

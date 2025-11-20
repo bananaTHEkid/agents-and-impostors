@@ -19,14 +19,8 @@ export async function createLobby(username: string): Promise<{ lobbyId: string; 
 
     const db = getDB();
     
-    // Check if username is taken in any active lobby
-    const usernameTakenInAnyLobby = await db.get(
-        "SELECT * FROM players p JOIN lobbies l ON p.lobby_id = l.id WHERE p.username = ? AND l.status != 'completed'", 
-        [username]
-    );
-    if (usernameTakenInAnyLobby) {
-        throw new Error("Username is already taken in an active game.");
-    }
+    // Note: Username uniqueness is only enforced within a lobby, not globally
+    // This allows the same username in different lobbies/games
 
     const lobbyCode = generateLobbyCode();
     // Generate a unique lobbyId (simple random string for now, could be UUID)
@@ -52,9 +46,13 @@ export async function joinLobby(
     }
 
     const db = getDB();
-    const lobby = await db.get("SELECT * FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+    // Normalize lobby code to uppercase for case-insensitive lookup
+    const normalizedCode = lobbyCode.trim().toUpperCase();
+    console.log(`[joinLobby] Looking for lobby with code: ${lobbyCode} (normalized: ${normalizedCode})`);
+    const lobby = await db.get("SELECT * FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
 
     if (!lobby) {
+        console.log(`[joinLobby] Lobby not found for code: ${lobbyCode} (normalized: ${normalizedCode})`);
         return { success: false, error: "Lobby does not exist" };
     }
 
@@ -69,20 +67,11 @@ export async function joinLobby(
         return { success: false, error: "Game has already started" };
     }
 
+    // Check if username is already in THIS specific lobby
+    // Username uniqueness is only enforced within a lobby, not globally
     const existingPlayerThisLobby = playersInLobby.find(p => p.username === username);
     if (existingPlayerThisLobby) {
-        return { success: false, error: "You are already in this lobby" };
-    }
-    
-    // Check if username is taken in *any* active lobby - this might be too restrictive
-    // Depending on requirements, this check might be removed or adjusted.
-    // For now, keeping it similar to the original logic.
-    const usernameTakenInAnyLobby = await db.get(
-        "SELECT * FROM players p JOIN lobbies l ON p.lobby_id = l.id WHERE p.username = ? AND l.status != 'completed'", 
-        [username]
-    );
-    if (usernameTakenInAnyLobby) {
-         return { success: false, error: "Username is already taken in an active game." };
+        return { success: false, error: "This username is already taken in this lobby. Please choose a different name." };
     }
 
 
@@ -148,7 +137,9 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
 
 export async function getLobbyPlayers(lobbyCode: string): Promise<{ success: boolean; error?: string; players?: any[] }> {
     const db = getDB();
-    const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+    // Normalize lobby code to uppercase for case-insensitive lookup
+    const normalizedCode = lobbyCode.trim().toUpperCase();
+    const lobby = await db.get("SELECT id FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
 
     if (!lobby) {
         return { success: false, error: "Lobby not found" };
@@ -160,12 +151,24 @@ export async function getLobbyPlayers(lobbyCode: string): Promise<{ success: boo
 
 export async function getLobby(lobbyCode: string): Promise<Lobby | null> {
     const db = getDB();
+    // Normalize lobby code to uppercase for case-insensitive lookup
+    const normalizedCode = lobbyCode.trim().toUpperCase();
     // Cast to Lobby type; ensure the DB schema matches the Lobby interface or adjust accordingly.
-    const lobbyData = await db.get("SELECT * FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
-    if (!lobbyData) return null;
-    // If Lobby type expects players array, it needs to be fetched separately or joined.
-    // For now, returning raw lobby data.
-    return lobbyData as Lobby; 
+    const lobbyData = await db.get("SELECT * FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
+    if (!lobbyData) {
+        console.log(`[getLobby] Lobby not found for code: ${lobbyCode} (normalized: ${normalizedCode})`);
+        return null;
+    }
+    // Map database snake_case to TypeScript camelCase
+    return {
+        id: lobbyData.id,
+        lobbyCode: lobbyData.lobby_code,
+        players: [], // Will be fetched separately if needed
+        status: lobbyData.status,
+        phase: lobbyData.phase,
+        current_round: lobbyData.current_round,
+        total_rounds: lobbyData.total_rounds
+    } as Lobby;
 }
 
 export async function getLobbyById(lobbyId: string): Promise<Lobby | null> {

@@ -18,7 +18,7 @@ test.describe('Landing Page', () => {
   });
 
   test('should show error when joining with empty lobbycode', async ({ page }) => {
-    await page.goto('http://localhost:5000/');
+    await page.goto('/');
     await page.getByRole('textbox', { name: 'Username' }).click();
     await page.getByRole('textbox', { name: 'Username' }).fill('A');
     await page.getByRole('textbox', { name: 'Lobby Code' }).click();
@@ -28,9 +28,9 @@ test.describe('Landing Page', () => {
   });
 
   test('should show error when joining with wrong lobbycode format', async ({ page }) => {
-    await page.goto('http://localhost:5000/');
+    await page.goto('/');
     await page.getByRole('textbox', { name: 'Username' }).click();
-    await page.getByRole('textbox', { name: 'Username' }).fill('A');
+    await page.getByRole('textbox', { name: 'Username' }).fill('ABC');
     await page.getByRole('textbox', { name: 'Lobby Code' }).click();
     await page.getByRole('textbox', { name: 'Lobby Code' }).fill('B');
     await page.getByTestId('join-game-button').click();
@@ -38,9 +38,9 @@ test.describe('Landing Page', () => {
   });
 
   test('should be able to create lobby', async ({ page }) => {
-    await page.goto('http://localhost:5000/');
+    await page.goto('/');
     await page.getByRole('textbox', { name: 'Username' }).click();
-    await page.getByRole('textbox', { name: 'Username' }).fill('A');
+    await page.getByRole('textbox', { name: 'Username' }).fill('ABCD');
     await page.getByTestId('create-game-button').click();
     await page.getByText('1 Spieler').click();
   });

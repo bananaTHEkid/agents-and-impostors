@@ -42,7 +42,7 @@ export interface LandingPageProps {
 
 export interface GameLobbyProps {
   lobbyCode: string;
-  onStartGame: () => void; // Callback to transition to game view when game starts
+  onStartGame?: () => void; // Optional: No longer used, App handles game-started event
   onExitLobby: () => void; // Callback to return to landing page when exiting lobby
 }
 

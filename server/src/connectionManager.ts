@@ -109,6 +109,15 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
                             lobbyClosed: result.lobbyClosed
                         });
 
+                        // If lobby still exists (not closed), emit updated player list to remaining players
+                        if (!result.lobbyClosed) {
+                            const { getLobbyPlayers } = await import('./lobby-manager/lobbyService');
+                            const playersResult = await getLobbyPlayers(lobbyCode);
+                            if (playersResult.success && playersResult.players) {
+                                io.to(lobby.id).emit("player-list", { players: playersResult.players });
+                            }
+                        }
+
                         if (result.lobbyClosed) {
                             console.log(`Lobby ${lobbyCode} was closed (no players remaining)`);
                         }

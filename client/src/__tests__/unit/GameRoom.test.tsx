@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest'; // Import the matchers
-import GameRoom from '../components/GameRoom';
-import { mockSocket, triggerSocketEvent } from './setup';
+import GameRoom from '../../components/GameRoom';
+import { mockSocket, triggerSocketEvent } from '../utils/setup';
 
 describe('GameRoom Component', () => {
   const mockProps = {
@@ -246,18 +247,25 @@ describe('GameRoom Component', () => {
     const inputField = await screen.findByPlaceholderText('Enter your vote or message...');
     expect(inputField).toBeInTheDocument();
   
-    // Type into the input field
-    fireEvent.change(inputField, { target: { value: 'player1' } });
+    // Type into the input field and submit using userEvent for better simulation
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.type(inputField, 'player1');
+    });
     
     // Submit the form
     const submitButton = screen.getByText('Submit');
-    fireEvent.click(submitButton);
+    await act(async () => {
+      await user.click(submitButton);
+    });
   
     // Check the socket emit call was made
-    expect(mockSocket.emit).toHaveBeenCalledWith('submit-vote', {
-      lobbyCode: 'TEST123',
-      username: 'testUser',
-      vote: 'player1',
+    await waitFor(() => {
+      expect(mockSocket.emit).toHaveBeenCalledWith('submit-vote', {
+        lobbyCode: 'TEST123',
+        username: 'testUser',
+        vote: 'player1',
+      });
     });
   });
   
@@ -394,13 +402,20 @@ describe('GameRoom Component', () => {
     const player1Option = screen.getByRole('button', { name: 'player1' });
     
     expect(player1Option).toBeInTheDocument();
-    fireEvent.click(player1Option);
+    
+    // Use userEvent for better user interaction simulation
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(player1Option);
+    });
   
     // Check the socket emit call was made
-    expect(mockSocket.emit).toHaveBeenCalledWith('submit-vote', {
-      lobbyCode: 'TEST123',
-      username: 'testUser',
-      vote: 'player1',
+    await waitFor(() => {
+      expect(mockSocket.emit).toHaveBeenCalledWith('submit-vote', {
+        lobbyCode: 'TEST123',
+        username: 'testUser',
+        vote: 'player1',
+      });
     });
   });
 }); 

@@ -1,12 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
+ * Environment configuration
+ * Supports both development and production environments
+ * 
+ * Usage:
+ * - Development (default): npm run test:e2e:dev
+ * - Production: E2E_ENV=production npm run test:e2e:prod
+ * - Custom ports: CLIENT_PORT=3000 SERVER_PORT=3001 npm run test:e2e
  */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+const ENV = process.env.E2E_ENV || 'dev';
+const CLIENT_PORT = process.env.CLIENT_PORT || '5000';
+const SERVER_PORT = process.env.SERVER_PORT || '5001';
+const CLIENT_URL = `http://localhost:${CLIENT_PORT}`;
+const SERVER_URL = `http://localhost:${SERVER_PORT}`;
+
+// Determine if we're testing production build
+const isProduction = ENV === 'production' || ENV === 'prod';
+
+// Log configuration for debugging
+if (!process.env.CI) {
+  console.log(`[Playwright] Environment: ${ENV}, Client: ${CLIENT_URL}, Server: ${SERVER_URL}`);
+}
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -22,14 +37,21 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  reporter: process.env.CI ? [['html'], ['github']] : 'html',
+  
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5000',
+    baseURL: CLIENT_URL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    
+    /* Screenshot on failure */
+    screenshot: 'only-on-failure',
+    
+    /* Video on failure */
+    video: 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */
@@ -38,47 +60,57 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-
-    /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
-
-    /* Test against branded browsers. */
-    // {
-    //   name: 'Microsoft Edge',
-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    // },
-    // {
-    //   name: 'Google Chrome',
-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    // },
   ],
 
   /* Run your local dev server before starting the tests */
   webServer: [
-/*     {
+    // Server (optional - set START_SERVER=true to enable, or run server manually)
+    // Note: Server is optional because you might want to run it separately
+    ...(process.env.START_SERVER === 'true' ? [{
       command: 'npm run dev',
       cwd: '../server',
-      url: 'http://localhost:5001',
-      reuseExistingServer: true,  // Try to reuse if available
-      timeout: 120000, // Increased timeout to 2 minutes for server startup
-      stdout: 'pipe',
-      stderr: 'pipe',
-    }, */
-    {
-      command: 'npx vite --port 5000 --strict-port',
-      cwd: '.',
-      url: 'http://localhost:5000',
-      reuseExistingServer: true,  // Try to reuse if available
-      timeout: 40000, // Increased timeout for client
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
+      url: SERVER_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+      env: {
+        PORT: SERVER_PORT,
+        NODE_ENV: 'development',
+      },
+    }] : []),
+    
+    // Client server - different commands for dev vs production
+    ...(isProduction ? [
+      // Production: serve built files
+      {
+        command: 'npm run build && npx vite preview --port 5000 --strict-port',
+        cwd: '.',
+        url: CLIENT_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 180000, // Longer timeout for build + preview
+        stdout: 'pipe' as const,
+        stderr: 'pipe' as const,
+        env: {
+          VITE_SERVER_URL: SERVER_URL,
+          NODE_ENV: 'production',
+        },
+      }
+    ] : [
+      // Development: run dev server
+      {
+        command: 'npx vite --port 5000 --strict-port',
+        cwd: '.',
+        url: CLIENT_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 40000,
+        stdout: 'pipe' as const,
+        stderr: 'pipe' as const,
+        env: {
+          VITE_SERVER_URL: SERVER_URL,
+          NODE_ENV: 'development',
+        },
+      }
+    ]),
   ],
 });

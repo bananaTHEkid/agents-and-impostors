@@ -76,6 +76,20 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
     console.log('[GameLobby] useEffect: socket:', socket, 'connected:', socket?.connected);
     if (!socket) return;
 
+    const currentUsername = sessionStorage.getItem("username") || "";
+    
+    // Ensure we're joined to the lobby via socket
+    // This is important for the lobby creator who might not have joined yet
+    if (currentUsername && lobbyCode) {
+      console.log(`[GameLobby] Ensuring socket join for ${currentUsername} to lobby ${lobbyCode}`);
+      socket.emit("join-lobby", { username: currentUsername, lobbyCode }, (response: any) => {
+        console.log('[GameLobby] join-lobby response:', response);
+        if (response && response.success) {
+          console.log('[GameLobby] Successfully joined lobby via socket');
+        }
+      });
+    }
+
     // Typ für die Socket-Antwort
     type PlayerListResponse = Player[] | { players: Player[] } | null | undefined;
     
@@ -98,12 +112,19 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
       });
     };
 
-    // Initiale Spielerliste abrufen
-    fetchPlayerList();
+    // Initiale Spielerliste abrufen (with a small delay to ensure socket join completes)
+    setTimeout(() => {
+      fetchPlayerList();
+    }, 100);
 
     const handlePlayerList = (data: Player[] | { players: Player[] }) => {
-      console.log('[GameLobby] Received player-list:', data); // Debug-Log
+      console.log('[GameLobby] Received player-list event:', data); // Debug-Log
+      console.log('[GameLobby] Current players before update:', players);
       updatePlayers(data);
+      // Log after a short delay to see the updated state
+      setTimeout(() => {
+        console.log('[GameLobby] Players after update should be visible in next render');
+      }, 100);
     };
 
     const handleLobbyState = (data: any) => {

@@ -120,7 +120,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const handleJoinLobby = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedUsername = username.trim();
-    const trimmedLobbyCode = lobbyCode.trim();
+    const trimmedLobbyCode = lobbyCode.trim().toUpperCase(); // Ensure uppercase
 
     if (!trimmedUsername || !trimmedLobbyCode) {
       setErrorMessage("Please fill in all fields");
@@ -133,20 +133,67 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       return;
     }
 
+    // Check if socket is available and connected
+    if (!socket || !socket.connected) {
+      setErrorMessage("Connecting to server...");
+      connect();
+      // Wait a bit for connection, then try to join
+      setTimeout(() => {
+        if (socket?.connected) {
+          performJoin(trimmedUsername, trimmedLobbyCode);
+        } else {
+          setErrorMessage("Failed to connect to server. Please wait a moment and try again.");
+          setIsLoading(false);
+        }
+      }, 2000);
+      return;
+    }
+    
+    performJoin(trimmedUsername, trimmedLobbyCode);
+  };
+  
+  const performJoin = (trimmedUsername: string, trimmedLobbyCode: string) => {
+    if (!socket || !socket.connected) {
+      setErrorMessage("Socket not connected. Please try again.");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage("");
 
+    // Store timeout ID so we can clear it when callback is received
+    let timeoutId: NodeJS.Timeout | null = null;
+
     try {
+      // Set a timeout in case the callback is never called (increased to 15 seconds for concurrent joins)
+      timeoutId = setTimeout(() => {
+        // Only show error if still loading (callback hasn't been called)
+        setIsLoading((currentLoading) => {
+          if (currentLoading) {
+            setErrorMessage("Server did not respond. Please try again.");
+            return false;
+          }
+          return currentLoading;
+        });
+      }, 15000); // Increased from 10 to 15 seconds for concurrent joins
+
       // Emit join-lobby event and wait for acknowledgment
-      socket?.emit(
+      socket.emit(
         "join-lobby",
         {
           username: trimmedUsername,
           lobbyCode: trimmedLobbyCode,
         },
         (response: JoinLobbyResponse) => {
+          // Clear the timeout since we got a response
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+
           console.log("Received join-lobby response:", response);
-          if (response.success && response.lobbyCode) {
+          if (response && response.success && response.lobbyCode) {
             sessionStorage.setItem("lobbyCode", response.lobbyCode);
             sessionStorage.setItem("username", trimmedUsername);
             sessionStorage.setItem("isHost", "false");
@@ -154,12 +201,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
             onJoinGame(response.lobbyCode);
             saveToRecentGames(response.lobbyCode);
           } else {
-            setErrorMessage(response.error || "Failed to join lobby");
+            setErrorMessage(response?.error || "Failed to join lobby");
             setIsLoading(false);
           }
         }
       );
     } catch (error) {
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       console.error("Error in handleJoinLobby:", error);
       setErrorMessage("Failed to join lobby");
       setIsLoading(false);

@@ -28,6 +28,7 @@ const io = new Server(server, {
     }
 });
 const playerOperationsByLobby: { [lobbyId: string]: any[] } = {};
+let playerListRefreshInterval: NodeJS.Timeout | null = null;
 
 // Initialize SQLite database
 let dbInstance: any; // This might not be needed if all DB access goes through services. Kept for now.
@@ -69,7 +70,9 @@ app.post("/create-lobby", async (req: Request, res: Response): Promise<void> => 
         // Fetch initial player list (just the creator)
         const playerRows = await getDB().all("SELECT username FROM players WHERE lobby_id = ?", [lobbyId]);
 
-        io.to(lobbyId).emit("player-list", { players: playerRows }); // Emit to the specific lobby room
+        console.log(`[create-lobby] Created lobby ${lobbyCode} (${lobbyId}) with initial player:`, playerRows);
+        // Note: The creator hasn't joined the socket room yet, so we can't emit to the room here
+        // The client will need to join the lobby via socket after receiving the lobby code
 
         res.json({ lobbyId, lobbyCode, accessToken });
     } catch (error) {
@@ -89,28 +92,23 @@ io.on("connection", (socket: Socket) => {
     socket.on("rejoin-game", async ({ lobbyCode, username, accessToken }) => {
     try {
         const db = getDB();
-        const lobby = await db.get("SELECT id, phase, status FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+        const lobby = await db.get("SELECT id, phase, status, current_round, total_rounds FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
         
         if (!lobby) {
             socket.emit("error", { message: "Lobby not found" });
             return;
         }
 
-        // Verify access token
-        if (!accessToken || !verifyLobbyToken(accessToken, lobby.id, username)) {
-            socket.emit("error", { message: "Unauthorized: Invalid or expired access token" });
-            return;
-        }
-
         // Only allow rejoin if game is in progress (not in waiting phase)
-        if (lobby.phase === 'waiting') {
-            socket.emit("error", { message: "Cannot rejoin: Game has not started yet. You must have left before the game began." });
+        // If in waiting phase, player should use join-lobby instead
+        if (lobby.phase === 'waiting' || lobby.status === 'waiting') {
+            socket.emit("error", { message: "Cannot rejoin: Game has not started yet. Please use 'join-lobby' to join the lobby." });
             return;
         }
 
-        // Verify player still exists in database
+        // Verify player still exists in database (they should if game is in progress)
         const player = await db.get(
-            "SELECT id FROM players WHERE username = ? AND lobby_id = ?",
+            "SELECT id, team, operation, operation_info FROM players WHERE username = ? AND lobby_id = ?",
             [username, lobby.id]
         );
 
@@ -119,30 +117,88 @@ io.on("connection", (socket: Socket) => {
             return;
         }
 
+        // Access token is optional - if provided, verify it; if not, allow rejoin based on username/lobbyCode match
+        // This allows players to reconnect without needing to store the access token
+        if (accessToken) {
+            if (!verifyLobbyToken(accessToken, lobby.id, username)) {
+                socket.emit("error", { message: "Unauthorized: Invalid or expired access token" });
+                return;
+            }
+        }
+
         connectionManager.cleanupOldSocket(username, socket.id, io);
-        const gameState = await db.get("SELECT status, round, total_rounds FROM lobbies WHERE id = ?", [lobby.id]);
-        const players = await db.all("SELECT username, team, operation FROM players WHERE lobby_id = ?", [lobby.id]);
         
-        // CHANGE: Add lobbyCode parameter
+        // Get all players with their teams
+        const players = await db.all("SELECT username, team, operation, eliminated FROM players WHERE lobby_id = ?", [lobby.id]);
+        
+        // Add connection and join socket room
         connectionManager.addConnection(socket.id, username, lobbyCode);
         socket.join(lobby.id);
         
         // Persist connection session for recovery
         await gameService.saveConnectionSession(socket.id, username, lobby.id, lobbyCode);
 
+        // Send complete game state
         socket.emit("game-state", {
-            currentState: gameState.status,
-            round: gameState.round,
-            totalRounds: gameState.total_rounds
+            phase: lobby.phase,
+            currentState: lobby.status,
+            round: lobby.current_round,
+            totalRounds: lobby.total_rounds
         });
 
+        // Send player list with teams
         socket.emit("player-list", { players });
 
+        // Send team assignment to the reconnecting player
+        if (player.team) {
+            // Get all players grouped by team for the team-assignment event
+            const impostors = players.filter(p => p.team === 'impostor').map(p => p.username);
+            const agents = players.filter(p => p.team === 'agent').map(p => p.username);
+            
+            socket.emit("team-assignment", { 
+                impostors,
+                agents,
+                phase: lobby.phase
+            });
+            socket.emit("your-team", {
+                team: player.team,
+                message: `You are a ${player.team === 'impostor' ? 'virus agent' : 'service agent'}!`
+            });
+        }
+
+        // Send operation assignment if player has one
+        if (player.operation) {
+            socket.emit("operation-assigned", { 
+                operation: player.operation 
+            });
+            
+            // Send operation info if available
+            if (player.operation_info) {
+                try {
+                    const operationInfo = JSON.parse(player.operation_info);
+                    socket.emit("operation-prepared", {
+                        operation: player.operation,
+                        info: operationInfo
+                    });
+                } catch (parseError) {
+                    console.error(`Error parsing operation_info for ${username}:`, parseError);
+                }
+            }
+        }
+
+        // Send current phase change notification
+        socket.emit("phase-change", {
+            phase: lobby.phase,
+            message: `Current phase: ${lobby.phase}`
+        });
+
         // Notify other players
-        socket.to(lobby.id).emit("game-message", {
+        io.to(lobby.id).emit("game-message", {
             type: "system",
             text: `${username} has reconnected`
         });
+
+        console.log(`Player ${username} rejoined game in lobby ${lobbyCode}`);
     } catch (error) {
         console.error("Error in rejoin-game:", error);
         socket.emit("error", { message: "Failed to rejoin game" });
@@ -164,41 +220,80 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
             return;
         }
 
+        // Normalize lobby code to uppercase
+        const normalizedLobbyCode = lobbyCode.trim().toUpperCase();
+        console.log(`[join-lobby] Received join request for lobby: ${lobbyCode} (normalized: ${normalizedLobbyCode}) from user: ${username}`);
+
         connectionManager.cleanupOldSocket(username, socket.id, io);
         
-        const joinResult = await lobbyService.joinLobby(lobbyCode, username);
-
-        if (!joinResult.success || !joinResult.lobbyId) {
-            if (callback) callback({ success: false, error: joinResult.error });
+        const db = getDB();
+        const lobby = await lobbyService.getLobby(normalizedLobbyCode);
+        
+        if (!lobby) {
+            console.error(`[join-lobby] Lobby not found: ${normalizedLobbyCode} (original: ${lobbyCode})`);
+            if (callback) callback({ success: false, error: 'Lobby does not exist' });
             return;
         }
-
-        const lobbyId = joinResult.lobbyId;
-        // CHANGE: Add lobbyCode parameter to track which lobby the user is in
-        connectionManager.addConnection(socket.id, username, lobbyCode);
+        
+        console.log(`[join-lobby] Found lobby: ${lobby.id} with code: ${lobby.lobbyCode}`);
+        
+        const lobbyId = lobby.id;
+        
+        // Check if player already exists in the lobby
+        const existingPlayer = await db.get(
+            "SELECT username FROM players WHERE username = ? AND lobby_id = ?",
+            [username, lobbyId]
+        );
+        
+        let players;
+        let isNewJoin = false;
+        
+        if (existingPlayer) {
+            // Player already in lobby - just join the socket room (reconnection scenario)
+            console.log(`[join-lobby] Player ${username} already in lobby ${normalizedLobbyCode}, joining socket room only`);
+            const playersResult = await lobbyService.getLobbyPlayers(normalizedLobbyCode);
+            players = playersResult.players || [];
+        } else {
+            // New player joining - add to database
+            const joinResult = await lobbyService.joinLobby(normalizedLobbyCode, username);
+            
+            if (!joinResult.success || !joinResult.lobbyId) {
+                if (callback) callback({ success: false, error: joinResult.error });
+                return;
+            }
+            
+            players = joinResult.players || [];
+            isNewJoin = true;
+        }
+        
+        // Add connection and join socket room (for both new and existing players)
+        connectionManager.addConnection(socket.id, username, normalizedLobbyCode);
         socket.join(lobbyId);
         
         // Persist connection session for reconnection recovery
-        await gameService.saveConnectionSession(socket.id, username, lobbyId, lobbyCode);
+        await gameService.saveConnectionSession(socket.id, username, lobbyId, normalizedLobbyCode);
         
-        // Get full lobby state to broadcast to all players
-        const lobby = await lobbyService.getLobby(lobbyCode);
+        // Emit player-joined notification only for new joins
+        if (isNewJoin) {
+            io.to(lobbyId).emit("player-joined", { username, lobbyId });
+        }
         
-        // Emit player-joined notification
-        io.to(lobbyId).emit("player-joined", { username, lobbyId });
+        // Emit updated player list to all players in lobby (including the joining/reconnecting player)
+        console.log(`[join-lobby] Emitting player-list to lobby ${lobbyId} with ${players?.length || 0} players:`, players);
+        io.to(lobbyId).emit("player-list", { players });
         
-        // Emit updated player list to all players in lobby
-        io.to(lobbyId).emit("player-list", { players: joinResult.players });
+        // Also send directly to the joining socket to ensure they receive it
+        socket.emit("player-list", { players });
         
         // Emit complete lobby state (including game phase and round info)
         if (lobby) {
             io.to(lobbyId).emit("lobby-state", {
                 lobbyId: lobby.id,
-                lobbyCode: lobby.lobbyCode,
+                lobbyCode: lobby.lobbyCode || normalizedLobbyCode,
                 status: lobby.status,
                 currentRound: lobby.current_round,
                 totalRounds: lobby.total_rounds,
-                players: joinResult.players,
+                players: players,
                 updatedAt: new Date().toISOString()
             });
         }
@@ -206,11 +301,11 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
         if (callback) {
             callback({ 
                 success: true,
-                lobbyCode,
-                players: joinResult.players 
+                lobbyCode: normalizedLobbyCode,
+                players: players 
             });
         }
-        console.log(`Player ${username} joined lobby ${lobbyCode}`);
+        console.log(`Player ${username} ${isNewJoin ? 'joined' : 'reconnected to'} lobby ${normalizedLobbyCode}`);
 
     } catch (error) {
         console.error("Error joining lobby:", error);
@@ -696,6 +791,49 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.SERVER_HOST || '0.0.0.0';
 
+/**
+ * Periodically refreshes player lists for all active lobbies in waiting phase
+ * This ensures all clients have up-to-date player lists even if events are missed
+ */
+const startPlayerListRefresh = () => {
+  // Refresh every 3 seconds (small delay as requested)
+  const REFRESH_INTERVAL_MS = 3000;
+  
+  playerListRefreshInterval = setInterval(async () => {
+    try {
+      const db = getDB();
+      
+      // Get all active lobbies in waiting phase
+      const activeLobbies = await db.all(
+        "SELECT id, lobby_code FROM lobbies WHERE status = 'waiting' AND phase = 'waiting'"
+      );
+      
+      // For each active lobby, refresh the player list
+      for (const lobby of activeLobbies) {
+        try {
+          const playersResult = await lobbyService.getLobbyPlayers(lobby.lobby_code);
+          
+          if (playersResult.success && playersResult.players) {
+            // Check if there are any sockets in this lobby room
+            const socketsInRoom = await io.in(lobby.id).fetchSockets();
+            
+            if (socketsInRoom.length > 0) {
+              // Broadcast updated player list to all players in this lobby
+              io.to(lobby.id).emit("player-list", { players: playersResult.players });
+            }
+          }
+        } catch (lobbyError) {
+          console.error(`Error refreshing player list for lobby ${lobby.lobby_code}:`, lobbyError);
+        }
+      }
+    } catch (error) {
+      console.error("Error in player list refresh cycle:", error);
+    }
+  }, REFRESH_INTERVAL_MS);
+  
+  console.log(`Player list auto-refresh started (interval: ${REFRESH_INTERVAL_MS}ms)`);
+};
+
 export const startServer = async (port: number = parseInt(PORT.toString())) => {
   await initializeDatabase();
   
@@ -711,11 +849,22 @@ export const startServer = async (port: number = parseInt(PORT.toString())) => {
     const portNumber = port;
     server.listen(portNumber, HOST, () => {
       console.log(`Server running on ${HOST}:${portNumber}`);
+      
+      // Start the periodic player list refresh
+      startPlayerListRefresh();
+      
       resolve();
     });
   });
 };
 
 export const stopServer = () => {
+  // Clear the player list refresh interval
+  if (playerListRefreshInterval) {
+    clearInterval(playerListRefreshInterval);
+    playerListRefreshInterval = null;
+    console.log("Player list auto-refresh stopped");
+  }
+  
   server.close();
 };
