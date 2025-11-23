@@ -30,10 +30,8 @@ test.describe('Game Room', () => {
       // Wait for game room to appear after game starts
       await expect(player1Page.getByTestId('game-room')).toBeVisible({ timeout: 30000 });
 
-      player1Page.pause();
-
     } finally {
-      // Cleanup
+
       await Promise.all(contexts.map(context => context.close()));
     }
   });

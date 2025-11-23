@@ -326,10 +326,44 @@ export async function generateOperationInfo(
         const config = OPERATION_CONFIG[operationName];
         if (!config?.generateInfo) continue;
 
-        const generatedInfo = config.generateInfo(players, teams, player);
+        // Let the operation generator produce a template. If it returns selectable
+        // `availablePlayers` or similar, the server will choose the actual targets
+        // now so that operations are prepared and immutable before assignment.
+        let generatedInfo = config.generateInfo(players, teams, player) || {};
+
+        // If generator provides `availablePlayers`, pick appropriate fields server-side
+        // based on `config.fields` so players cannot change them at assignment time.
+        try {
+            if (generatedInfo.availablePlayers && Array.isArray(generatedInfo.availablePlayers) && config.fields && config.fields.length > 0) {
+                const available = generatedInfo.availablePlayers.filter((p: string) => p !== player);
+                // Helper to pick unique random values
+                const pickRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+                const chosen: Record<string, any> = {};
+                for (let i = 0; i < config.fields.length; i++) {
+                    const fieldName = config.fields[i];
+                    if (!available.length) break;
+                    // For multi-field selections, try to avoid duplicates when possible
+                    let choice = pickRandom(available);
+                    if (config.fields.length > 1) {
+                        // Remove chosen from available to avoid duplicates
+                        const idx = available.indexOf(choice);
+                        if (idx >= 0) available.splice(idx, 1);
+                    }
+                    chosen[fieldName] = choice;
+                }
+
+                generatedInfo = { ...generatedInfo, ...chosen };
+                delete generatedInfo.availablePlayers;
+            }
+        } catch (err) {
+            console.error(`Error selecting targets for operation ${operationName} for ${player}:`, err);
+        }
+
+        // Persist the prepared operation info (immutable/server-chosen)
         await db.run(
             "UPDATE players SET operation_info = ? WHERE username = ? AND lobby_id = ?",
-            [JSON.stringify(generatedInfo), player, lobbyId] 
+            [JSON.stringify(generatedInfo), player, lobbyId]
         );
 
         const socketId = getSocketIdByUsername(player);
@@ -340,7 +374,8 @@ export async function generateOperationInfo(
             });
             console.log(`Operation '${operationName}' with info sent to ${player} (${socketId})`);
         } else {
-            console.warn(`Socket ID for player ${player} not found when sending operation info.`);
+            // Player offline — info persisted for later replay on reconnect
+            console.warn(`Socket ID for player ${player} not found when sending operation info. Saved to DB for later delivery.`);
         }
     }
 }
@@ -357,58 +392,50 @@ export async function assignTeamsAndOperations(
     );
     if (!impostorConfig) throw new Error("Invalid number of players for impostor assignment.");
 
-    // Use transaction for atomic team and operation assignment
+    // Prepare player->operation mapping first (server chooses operations deterministically here)
+    const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
+    const impostors = shuffledPlayers.slice(0, impostorConfig.count);
+    const agents = shuffledPlayers.slice(impostorConfig.count);
+
+    const teams: Record<string, string> = {};
+    impostors.forEach(player => teams[player] = "impostor");
+    agents.forEach(player => teams[player] = "agent");
+
+    // Select operations (use metadata from GAME_CONFIG, ensure only available ops are used)
+    const availableOps = GAME_CONFIG.OPERATIONS.filter(op => op.name in OPERATION_CONFIG);
+    const shuffledOperations = [...availableOps].sort(() => 0.5 - Math.random());
+
+    const playerOperationsLocal = players.map((player, index) => ({
+        player,
+        operation: shuffledOperations[index % shuffledOperations.length]
+    }));
+
+    // Now write teams and assigned operation names into DB atomically
     await withTransaction(async (db) => {
-        const shuffledPlayers = [...players].sort(() => 0.5 - Math.random());
-        const impostors = shuffledPlayers.slice(0, impostorConfig.count);
-        const agents = shuffledPlayers.slice(impostorConfig.count);
-
-        const teams: Record<string, string> = {};
-        impostors.forEach(player => teams[player] = "impostor");
-        agents.forEach(player => teams[player] = "agent");
-
-        // Assign teams atomically
         for (const player of players) {
             await db.run("UPDATE players SET team = ? WHERE username = ? AND lobby_id = ?", [teams[player], player, lobbyId]);
         }
 
-        // Assign operations atomically
-        const shuffledOperations = GAME_CONFIG.OPERATIONS
-            .filter(op => op.name in OPERATION_CONFIG)
-            .sort(() => 0.5 - Math.random());
-
-        const playerOperations = players.map((player, index) => ({
-            player,
-            operation: shuffledOperations[index % shuffledOperations.length]
-        }));
-
-        for (const { player, operation } of playerOperations) {
+        for (const { player, operation } of playerOperationsLocal) {
             if (operation) {
-                 await db.run("UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?", [operation.name, player, lobbyId]);
+                await db.run("UPDATE players SET operation = ? WHERE username = ? AND lobby_id = ?", [operation.name, player, lobbyId]);
             }
         }
     });
 
-    // Generate operation info and notify players (outside transaction)
+    // Generate operation info and notify players (info is prepared server-side)
     const teamData = await db.all(`SELECT username, team FROM players WHERE lobby_id = ?`, [lobbyId]);
-    const teams: Record<string, string> = {};
-    teamData.forEach(p => teams[p.username] = p.team);
-    
-    await generateOperationInfo(lobbyId, players, teams, io, getSocketIdByUsername);
+    const teamsMap: Record<string, string> = {};
+    teamData.forEach(p => teamsMap[p.username] = p.team);
 
-    io.to(lobbyId).emit("team-assignment", {
-        teams,
-        phase: GamePhase.OPERATION_ASSIGNMENT,
-        requiresAcknowledgment: true
-    });
+    await generateOperationInfo(lobbyId, players, teamsMap, io, getSocketIdByUsername);
 
-    // Return player operations for logging
-    const playerOperations = players.map(async (player) => {
-        const op = await db.get("SELECT operation FROM players WHERE username = ? AND lobby_id = ?", [player, lobbyId]);
-        return { player, operation: op?.operation };
-    });
+    // Do not broadcast full teams to the room here. The caller (server.ts) will
+    // handle per-player notifications and phased reveals.
 
-    return { playerOperations: await Promise.all(playerOperations) };
+    // Return the server-chosen operations with metadata so callers can use
+    // `.name` and `.hidden` without re-querying the DB.
+    return { playerOperations: playerOperationsLocal };
 }
 
 

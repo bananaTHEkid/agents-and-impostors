@@ -451,23 +451,42 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
                 [GamePhase.OPERATION_ASSIGNMENT, lobbyId]
             );
 
-            // Send operation only to the first player in order
-            if (playerOperations.length > 0) {
-                const { player, operation } = playerOperations[0];
-                if (operation) {
-                    const playerSocketId = connectionManager.getSocketId(player);
-                    if (playerSocketId) {
-                        io.to(playerSocketId).emit("operation-assigned", { operation: operation.name });
-                        await dbInstance.run(
-                            "UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?",
-                            [lobbyId, player]
-                        );
-                    }
+            // Sequentially assign operations: find the first unassigned player and
+            // either deliver to their socket or auto-accept if they're disconnected.
+            for (const opItem of playerOperations) {
+                const player = opItem.player;
+                const operationMeta = opItem.operation;
+                // Check DB to see if already assigned (defensive)
+                const assignedRow = await dbInstance.get(
+                    "SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?",
+                    [lobbyId, player]
+                );
+                if (assignedRow && assignedRow.operation_assigned) continue;
+
+                const playerSocketId = connectionManager.getSocketId(player);
+                // Emit a public placeholder about this player's assignment (hidden or named)
+                io.to(lobbyId).emit("operation-assigned-public", {
+                    player,
+                    operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name
+                });
+
+                if (playerSocketId) {
+                    io.to(playerSocketId).emit("operation-assigned", { operation: operationMeta?.name });
+                    await dbInstance.run(
+                        "UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, player]
+                    );
+                    break; // Wait for client to accept via `accept-assignment`
+                } else {
+                    // Player disconnected — auto-accept so sequence continues
+                    await dbInstance.run(
+                        "UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, player]
+                    );
+                    // Continue to next player in sequence
+                    continue;
                 }
             }
-
-            // Do NOT send operations to all players here!
-            // The rest will be handled by the accept-assignment event
 
         } catch (error) {
             socket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
@@ -475,30 +494,56 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
     });
 
     socket.on("accept-assignment", async ({ lobbyId, username }) => {
-    await dbInstance.run(
-        "UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?",
-        [lobbyId, username]
-    );
+        // Mark this player's acceptance
+        await dbInstance.run(
+            "UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?",
+            [lobbyId, username]
+        );
 
-    // Find next player who hasn't accepted
-    const nextPlayerRow = await dbInstance.get(
-        "SELECT username FROM players WHERE lobby_id = ? AND operation_accepted = 0 ORDER BY id ASC",
-        [lobbyId]
-    );
-    if (nextPlayerRow) {
-        const opObj = playerOperationsByLobby[lobbyId]?.find(po => po.player === nextPlayerRow.username);
-        if (opObj && opObj.operation) {
-            const playerSocketId = connectionManager.getSocketId(nextPlayerRow.username);
+        // Loop to find the next unassigned player and either deliver their operation
+        // to a connected socket or auto-accept/skip if they're disconnected.
+        const playerOps = playerOperationsByLobby[lobbyId] || [];
+        // Order by the original playerOps ordering
+        for (const opItem of playerOps) {
+            const nextPlayer = opItem.player;
+            const operationMeta = opItem.operation;
+
+            // Check if this player still needs assignment
+            const row = await dbInstance.get(
+                "SELECT operation_assigned, operation_accepted FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, nextPlayer]
+            );
+            if (!row) continue;
+            if (row.operation_assigned) continue; // already assigned
+
+            const playerSocketId = connectionManager.getSocketId(nextPlayer);
+
+            // Broadcast public placeholder for reveal of this specific player's assignment
+            io.to(lobbyId).emit("operation-assigned-public", {
+                player: nextPlayer,
+                operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name
+            });
+
             if (playerSocketId) {
-                io.to(playerSocketId).emit("operation-assigned", { operation: opObj.operation.name });
+                io.to(playerSocketId).emit("operation-assigned", { operation: operationMeta?.name });
                 await dbInstance.run(
                     "UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?",
-                    [lobbyId, nextPlayerRow.username]
+                    [lobbyId, nextPlayer]
                 );
+                // stop here — wait for that client to call accept-assignment
+                return;
+            } else {
+                // Not connected: auto-assign and mark accepted so we continue
+                await dbInstance.run(
+                    "UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?",
+                    [lobbyId, nextPlayer]
+                );
+                // continue loop to next player
+                continue;
             }
         }
-    } else {
-        // All players have accepted, move to voting phase
+
+        // If we reach here, every player has been assigned (or auto-accepted) — start voting
         await dbInstance.run(
             "UPDATE lobbies SET phase = ? WHERE id = ?",
             [GamePhase.VOTING, lobbyId]
@@ -507,7 +552,6 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
             phase: GamePhase.VOTING,
             message: "All assignments complete. Voting phase begins!"
         });
-    }
 });
 
     socket.on("use-confession", async ({ targetPlayer, lobbyId }) => {

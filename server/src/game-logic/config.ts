@@ -16,7 +16,6 @@ export const GAME_CONFIG = {
         {name: "secret intel", hidden: true},
         {name: "secret tip", hidden: true},
         {name: "confession", hidden: false},
-        {name: "secret intel", hidden: false}, // Note: "secret intel" appears twice, once hidden, once not. This might be intentional or a typo.
         {name: "old photographs", hidden: false},
         {name: "danish intelligence", hidden: false},
         {name: "anonymous tip", hidden: false},
