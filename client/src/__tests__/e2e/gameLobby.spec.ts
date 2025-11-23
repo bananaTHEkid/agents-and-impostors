@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, request } from '@playwright/test';
 
 /**
  * Helper functions for common lobby operations
@@ -53,6 +53,34 @@ class LobbyHelpers {
       throw new Error('Failed to extract lobby code');
     }
 
+    // Ensure the server has persisted the lobby and the creator is listed.
+    // Poll the debug endpoint which is enabled in development server.
+    const serverUrl = 'http://localhost:5001';
+    const startServerPoll = Date.now();
+    const serverPollTimeout = 10000;
+    let creatorSeen = false;
+    while (Date.now() - startServerPoll < serverPollTimeout) {
+      try {
+        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode.trim())}`);
+        if (resp.ok()) {
+          const data = await resp.json() as any;
+          if (data && data.success && Array.isArray(data.players)) {
+            const players = data.players.map((p: any) => (p.username ? p.username : p));
+            if (players.includes(username)) {
+              creatorSeen = true;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await page.waitForTimeout(250);
+    }
+
+    if (!creatorSeen) {
+      console.warn(`Creator ${username} not yet present on server for lobby ${lobbyCode}`);
+    }
     // Ensure network settled before returning
     await page.waitForLoadState('networkidle');
     return lobbyCode.trim();
@@ -71,6 +99,32 @@ class LobbyHelpers {
     // Wait for network to be idle to ensure socket is connected
     await page.waitForLoadState('networkidle');
 
+    // Before attempting to join, ensure the lobby exists on the server to
+    // avoid races where the lobby hasn't been persisted yet.
+    const serverUrl = 'http://localhost:5001';
+    const lobbyExistStart = Date.now();
+    const lobbyExistTimeout = 10000;
+    let lobbyExists = false;
+    while (Date.now() - lobbyExistStart < lobbyExistTimeout) {
+      try {
+        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode)}`);
+        if (resp.ok()) {
+          const data = await resp.json() as any;
+          if (data && data.success) {
+            lobbyExists = true;
+            break;
+          }
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await page.waitForTimeout(250);
+    }
+
+    if (!lobbyExists) {
+      console.warn(`Lobby ${lobbyCode} not found on server before join attempt`);
+    }
+
     await page.getByTestId('join-game-button').click();
 
     // Wait for either the lobby to appear or an alert to show
@@ -87,15 +141,40 @@ class LobbyHelpers {
       throw new Error(`Failed to join lobby: ${errorText || 'Unknown error'}`);
     }
 
-    if (result !== 'lobby') {
-      // Fallback: if neither appeared in time, check visibility directly one last time
+    // If the UI didn't show the lobby, poll the server debug endpoint to
+    // confirm whether the player was added — this is more reliable for
+    // socket-driven flows in tests.
+    const playerJoinStart = Date.now();
+    const playerJoinTimeout = 15000; // wait up to 15s for server to show player
+    let playerSeenOnServer = false;
+    while (Date.now() - playerJoinStart < playerJoinTimeout) {
+      try {
+        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode)}`);
+        if (resp.ok()) {
+          const data = await resp.json() as any;
+          if (data && data.success && Array.isArray(data.players)) {
+            const players = data.players.map((p: any) => (p.username ? p.username : p));
+            if (players.includes(username)) {
+              playerSeenOnServer = true;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await page.waitForTimeout(250);
+    }
+
+    if (!playerSeenOnServer) {
+      // Fallback: if neither server nor UI indicate success, check UI visibility
       const visible = await lobbyLocator.isVisible().catch(() => false);
       if (!visible) {
         throw new Error('Failed to join lobby: Lobby did not appear and no error message was shown');
       }
     }
 
-    // Verify we successfully joined by checking lobby is visible
+    // Verify we successfully joined by checking lobby is visible (UI assertion)
     await expect(lobbyLocator).toBeVisible({ timeout: 10000 });
   }
 
@@ -107,18 +186,46 @@ class LobbyHelpers {
     expectedCount: number,
     timeout: number = 30000
   ): Promise<void> {
-    // Prefer to assert the number of player list items rather than matching
-    // a translated or combined text blob in the lobby container.
+    // Prefer to assert the number of player list entries rather than matching
+    // a translated or combined text blob in the lobby container. The player
+    // list uses `div` elements (not `li`), so query `div` children here.
     await Promise.all(
       pages.map(page => {
-        const listItems = page.getByTestId('player-list').locator('li');
+        // Use a scoped selector to count only direct children which represent
+        // individual player entries. This avoids counting nested `div`s such as
+        // avatar or inner content elements.
+        const listItems = page.getByTestId('player-list').locator(':scope > div');
         return expect(listItems).toHaveCount(expectedCount, { timeout });
       })
     );
   }
 }
 
-test.describe('Game Lobby', () => {
+test.describe.serial('Game Lobby', () => {
+  // Reset DB once for this suite to avoid races between workers using the
+  // shared SQLite DB. Running the suite serially prevents concurrent tests
+  // from interfering with the global DB state.
+  test.beforeAll(async () => {
+    const req = await request.newContext();
+    try {
+      await req.post('http://localhost:5001/debug/reset-db');
+    } catch (e) {
+      console.warn('Warning: failed to reset server DB in beforeAll', e);
+    } finally {
+      await req.dispose();
+    }
+  });
+
+  test.afterAll(async () => {
+    const req = await request.newContext();
+    try {
+      await req.post('http://localhost:5001/debug/reset-db');
+    } catch (e) {
+      // ignore
+    } finally {
+      await req.dispose();
+    }
+  });
   test.describe('Lobby Creation', () => {
     test('should create lobby and display creator in player list', async ({ page }) => {
       // Arrange
