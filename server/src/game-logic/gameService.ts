@@ -123,21 +123,15 @@ export async function recordVote(
 
 export async function startNewRound(lobbyId: string, roundNumber: number, lobbies: Record<string, Lobby>) {
     const db = getDB();
+    // Clear any previous votes for a fresh single-round game
     await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
-    await db.run(`
-        UPDATE players
-        SET eliminated = 0
-        WHERE lobby_id = ?
-    `, [lobbyId]);
+
+    // Set lobby into team assignment phase and current round (single round games)
     await db.run(`
         UPDATE lobbies
         SET phase = ?, current_round = ?
         WHERE id = ?
-    `, [GamePhase.TEAM_ASSIGNMENT, roundNumber, lobbyId]); // Using GamePhase from types
-    await db.run(`
-        INSERT INTO rounds (lobby_id, round_number, completed)
-        VALUES (?, ?, 0)
-    `, [lobbyId, roundNumber]);
+    `, [GamePhase.TEAM_ASSIGNMENT, roundNumber, lobbyId]);
 
     if (lobbies[lobbyId]) {
         lobbies[lobbyId].phase = GamePhase.TEAM_ASSIGNMENT;
@@ -186,7 +180,8 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
 export async function calculateRoundResults(lobbyId: string): Promise<RoundResult> {
     const db = getDB();
     const lobby = await db.get(`SELECT current_round FROM lobbies WHERE id = ?`, [lobbyId]);
-    const players = await db.all(`SELECT username, team FROM players WHERE lobby_id = ? AND eliminated = 0`, [lobbyId]);
+    // For single-round/no-elimination mode include all players when computing results
+    const players = await db.all(`SELECT username, team FROM players WHERE lobby_id = ?`, [lobbyId]);
     const votes = await db.all(`SELECT voter, target FROM votes WHERE lobby_id = ? AND round_number = ?`, [lobbyId, lobby.current_round]);
 
     const voteRecord: Record<string, string> = {};
@@ -201,13 +196,8 @@ export async function calculateRoundResults(lobbyId: string): Promise<RoundResul
         .filter(([_, count]) => count === maxVotes)
         .map(([player]) => player);
 
-    // Use transaction for atomic elimination updates
-    await withTransaction(async (db) => {
-        for (const player of eliminatedPlayers) {
-            await db.run(`UPDATE players SET eliminated = 1 WHERE lobby_id = ? AND username = ?`, [lobbyId, player]);
-        }
-    });
-
+    // In single-round/no-elimination mode we do not persist eliminations to the DB.
+    // eliminatedPlayers is a logical result (players who received the most votes).
     const remainingPlayers = players.filter(p => !eliminatedPlayers.includes(p.username));
     const teamCounts = remainingPlayers.reduce((acc, player) => {
         acc[player.team] = (acc[player.team] || 0) + 1;
@@ -232,77 +222,84 @@ export async function calculateRoundResults(lobbyId: string): Promise<RoundResul
 
     await processSpecialOperations(lobbyId, currentRoundResult);
 
-    await db.run(`UPDATE rounds SET winner = ?, completed = 1 WHERE lobby_id = ? AND round_number = ?`, [winner, lobbyId, lobby.current_round]);
+    // In single-round/no-persistent-round mode we do not persist round rows here.
     return currentRoundResult;
 }
 
 export async function calculateFinalResults(lobbyId: string): Promise<FinalResults> {
     const db = getDB();
-    const rounds = await db.all(`SELECT round_number, winner FROM rounds WHERE lobby_id = ? ORDER BY round_number`, [lobbyId]);
+    // Single-round mode: derive final results from the single round and current DB state
+    // Attempt to reconstruct the most recent round result from votes
+    const dbRound = await db.get(`SELECT current_round FROM lobbies WHERE id = ?`, [lobbyId]);
+    const currentRoundNumber = dbRound ? dbRound.current_round : 1;
+
+    const votes = await db.all(`SELECT voter, target FROM votes WHERE lobby_id = ? AND round_number = ?`, [lobbyId, currentRoundNumber]);
+    const voteRecord: Record<string, string> = {};
+    votes.forEach(v => { voteRecord[v.voter] = v.target; });
+
+    // Count votes per target
+    const playersList = await db.all(`SELECT username, team, operation, win_status FROM players WHERE lobby_id = ?`, [lobbyId]);
+    const voteCounts: Record<string, number> = {};
+    playersList.forEach(p => { voteCounts[p.username] = 0; });
+    votes.forEach(v => { if (voteCounts[v.target] !== undefined) voteCounts[v.target]++; });
+
+    const maxVotes = Object.values(voteCounts).length ? Math.max(...Object.values(voteCounts)) : 0;
+    const eliminatedPlayers = Object.entries(voteCounts).filter(([_, c]) => c === maxVotes).map(([name]) => name);
+
+    // Determine winner by same logic as round calculation
+    const remainingPlayers = playersList.filter(p => !eliminatedPlayers.includes(p.username));
+    const teamCounts = remainingPlayers.reduce((acc: Record<string, number>, player) => {
+        acc[player.team] = (acc[player.team] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    let overallWinner: 'agents' | 'impostors';
+    if (!teamCounts['impostor'] || teamCounts['impostor'] === 0) {
+        overallWinner = 'agents';
+    } else if (!teamCounts['agent'] || teamCounts['agent'] <= teamCounts['impostor']) {
+        overallWinner = 'impostors';
+    } else {
+        overallWinner = 'agents';
+    }
+
+    // Team scores: single round
     const teamScores = { agents: 0, impostors: 0 };
-    rounds.forEach(round => {
-        if (round.winner === 'agents') teamScores.agents++;
-        if (round.winner === 'impostors') teamScores.impostors++;
-    });
+    teamScores[overallWinner] = 1;
 
-    const players = await db.all(`
-        SELECT p.username, p.team, p.operation, p.win_status,
-               (SELECT COUNT(*) FROM votes v WHERE v.target = p.username AND v.lobby_id = p.lobby_id) as times_voted_out,
-               (SELECT COUNT(*) FROM rounds r WHERE r.lobby_id = p.lobby_id AND r.winner = p.team) as rounds_won
-        FROM players p
-        WHERE p.lobby_id = ?
-        GROUP BY p.username
-    `, [lobbyId]);
-    
-    const mvp = players.reduce((prev, current) => {
-        const prevScore = (prev.rounds_won || 0) - (prev.times_voted_out || 0);
-        const currentScore = (current.rounds_won || 0) - (current.times_voted_out || 0);
-        return currentScore > prevScore ? current : prev;
-    }, players[0] || {username: "N/A"}).username;
-
-
-    const roundResults = await Promise.all(rounds.map(async (round): Promise<RoundResult> => {
-        const votes = await db.all(`SELECT voter, target FROM votes WHERE lobby_id = ? AND round_number = ?`, [lobbyId, round.round_number]);
-        // This part for eliminatedPlayers per round needs historical data not currently stored.
-        // For now, it will reflect players eliminated by the end of that specific round if we had such data.
-        // As a placeholder, we'll use a simplified version. A more accurate system would snapshot eliminations per round.
-        const eliminatedInRound = await db.all(`
-            SELECT DISTINCT v.target 
-            FROM votes v
-            JOIN (
-                SELECT target, MAX(COUNT_val) as max_votes_in_round
-                FROM (
-                    SELECT target, COUNT(*) as COUNT_val
-                    FROM votes
-                    WHERE lobby_id = ? AND round_number = ?
-                    GROUP BY target
-                )
-                GROUP BY target
-                HAVING COUNT_val = (SELECT MAX(c) FROM (SELECT COUNT(*) as c FROM votes WHERE lobby_id = ? AND round_number = ? GROUP BY target))
-            ) AS max_vote_targets ON v.target = max_vote_targets.target
-            WHERE v.lobby_id = ? AND v.round_number = ?;
-        `, [lobbyId, round.round_number, lobbyId, round.round_number, lobbyId, round.round_number]);
-
+    // Compute mvp: simple heuristic using times voted out and whether player's team matched overallWinner
+    const playersWithStats = await Promise.all(playersList.map(async (p: any) => {
+        const timesVotedOutRow = await db.get(`SELECT COUNT(*) as c FROM votes WHERE target = ? AND lobby_id = ?`, [p.username, lobbyId]);
+        const roundsWon = (p.team === overallWinner) ? 1 : 0;
         return {
-            winner: round.winner as 'agents' | 'impostors',
-            eliminatedPlayers: eliminatedInRound.map(p => p.target),
-            votes: votes.reduce((acc, vote) => { acc[vote.voter] = vote.target; return acc; }, {} as Record<string, string>),
-            roundNumber: round.round_number
+            username: p.username,
+            team: p.team,
+            operation: p.operation,
+            winStatus: (p.win_status as 'win' | 'lose') || (p.team === overallWinner ? 'win' : 'lose'),
+            times_voted_out: timesVotedOutRow ? timesVotedOutRow.c : 0,
+            rounds_won: roundsWon
         };
     }));
 
+    const mvp = playersWithStats.reduce((prev: any, curr: any) => {
+        const prevScore = (prev.rounds_won || 0) - (prev.times_voted_out || 0);
+        const currScore = (curr.rounds_won || 0) - (curr.times_voted_out || 0);
+        return currScore > prevScore ? curr : prev;
+    }, playersWithStats[0] || { username: 'N/A' }).username;
+
+    const roundResult: RoundResult = {
+        winner: overallWinner,
+        eliminatedPlayers,
+        votes: voteRecord,
+        roundNumber: currentRoundNumber
+    };
+
     return {
-        overallWinner: teamScores.agents > teamScores.impostors ? 'agents' : 'impostors',
-        roundResults,
+        overallWinner,
+        roundResults: [roundResult],
         mvp,
-        totalRounds: rounds.length,
+        totalRounds: 1,
         teamScores,
-        players: players.map(p => ({
-            username: p.username,
-            team: p.team as 'agent' | 'impostor',
-            winStatus: (p.win_status as 'win' | 'lose') || 'lose',
-            operation: p.operation
-        }))
+        players: playersWithStats.map((p: any) => ({ username: p.username, team: p.team, winStatus: p.winStatus, operation: p.operation }))
     };
 }
 
@@ -446,41 +443,30 @@ export async function endRound(
     io: Server // Pass io instance
 ): Promise<'game_end' | 'next_round' | false> {
     const db = getDB();
+    // In single-round mode we treat any endRound as the end of the game.
+    // Update lobby to waiting phase and clear player/vote/round state so no data persists between games.
     await db.run(`
-        UPDATE rounds 
-        SET winner = ?, completed = 1 
-        WHERE lobby_id = ? AND round_number = (SELECT current_round FROM lobbies WHERE id = ?)
-    `, [roundResult.winner, lobbyId, lobbyId]);
-
-    const lobbyInfo = await db.get(`
-        SELECT current_round, total_rounds 
-        FROM lobbies 
+        UPDATE lobbies 
+        SET status = 'waiting', phase = ? , current_round = 0
         WHERE id = ?
-    `, [lobbyId]);
+    `, [GamePhase.WAITING, lobbyId]);
 
-    if (!lobbyInfo) return false;
-
-    if (lobbyInfo.current_round >= lobbyInfo.total_rounds) {
-        await db.run(`
-            UPDATE lobbies 
-            SET status = 'completed', phase = 'completed' 
-            WHERE id = ?
-        `, [lobbyId]);
-        // Update in-memory lobby if it exists
-        if (lobbies[lobbyId]) {
-            lobbies[lobbyId].status = 'completed';
-            lobbies[lobbyId].phase = GamePhase.WAITING; // Or a new 'completed' phase
-        }
-        
-        // Schedule cleanup of completed lobby
-        scheduleLobbyCleanupp(lobbyId);
-        
-        return 'game_end';
+    if (lobbies[lobbyId]) {
+        lobbies[lobbyId].status = 'waiting';
+        lobbies[lobbyId].phase = GamePhase.WAITING;
+        lobbies[lobbyId].current_round = 0;
     }
 
-    // Start next round - ensure lobbies object is passed if startNewRound needs it
-    await startNewRound(lobbyId, lobbyInfo.current_round + 1, lobbies); 
-    return 'next_round';
+    // Immediately remove per-game data so nothing persists between games.
+    try {
+        await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+        await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
+        await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
+    } catch (err) {
+        console.error(`Error cleaning up lobby data for ${lobbyId}:`, err);
+    }
+
+    return 'game_end';
 }
 
 /**

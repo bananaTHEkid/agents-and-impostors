@@ -410,25 +410,29 @@ export const OPERATION_CONFIG: Record<
                 winCondition: "must_be_voted_out"
             };
         },
-        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+        modifyWinCondition: async (lobbyId, players, votes, teams, db, roundResult) => {
             // Get scapegoat players
             const scapegoats = await db.all(
                 "SELECT username FROM players WHERE lobby_id = ? AND operation = 'scapegoat'",
                 [lobbyId]
             );
-            
-            // Get eliminated players in this round
-            const eliminated = await db.all(
-                "SELECT username FROM players WHERE lobby_id = ? AND eliminated = 1",
-                [lobbyId]
-            );
-            
-            const eliminatedNames = eliminated.map((p: any) => p.username);
-            
+
+            // Determine eliminated players from provided roundResult (preferred) or fallback to DB
+            let eliminatedNames: string[] = [];
+            if (roundResult && Array.isArray((roundResult as any).eliminatedPlayers)) {
+                eliminatedNames = (roundResult as any).eliminatedPlayers;
+            } else {
+                const eliminated = await db.all(
+                    "SELECT username FROM players WHERE lobby_id = ? AND eliminated = 1",
+                    [lobbyId]
+                );
+                eliminatedNames = eliminated.map((p: any) => p.username);
+            }
+
             for (const scapegoat of scapegoats) {
                 const isEliminated = eliminatedNames.includes(scapegoat.username);
                 const shouldWin = isEliminated; // Win condition is being voted out
-                
+
                 await db.run(
                     "UPDATE players SET win_status = ? WHERE lobby_id = ? AND username = ?",
                     [shouldWin ? 'win' : 'lose', lobbyId, scapegoat.username]

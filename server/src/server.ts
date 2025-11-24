@@ -382,8 +382,8 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
     }
 });
 
-    // Handle game start logic
-    socket.on("start-game", async ({ lobbyCode, rounds = 3 }) => {
+    // Handle game start logic (single-round mode)
+    socket.on("start-game", async ({ lobbyCode }) => {
         try {
             const dbInstance = getDB();
             const lobby = await lobbyService.getLobby(lobbyCode);
@@ -403,13 +403,13 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
                 throw new Error(`Not enough players. Minimum required: ${GAME_CONFIG.MIN_PLAYERS}`);
             }
 
-            // Update lobby status and phase in DB
+            // Single-round behavior: force total_rounds = 1
             await dbInstance.run(`
                 UPDATE lobbies 
                 SET total_rounds = ?, current_round = 1, status = 'playing', phase = ?
                 WHERE id = ?
-            `, [rounds, GamePhase.TEAM_ASSIGNMENT, lobbyId]);
-            
+            `, [1, GamePhase.TEAM_ASSIGNMENT, lobbyId]);
+
             await gameService.startNewRound(lobbyId, 1, {});
 
             io.to(lobbyId).emit("game-started", { 
@@ -724,12 +724,12 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
             socket.emit("vote-submitted", { username, vote });
             socket.to(lobbyId).emit("player-voted", { username });
 
-            // Check if all active players have voted
+            // Check if all players have voted (no elimination concept)
             const [activePlayers, submittedVotes] = await Promise.all([
                 dbInstance.all(`
                 SELECT COUNT(*) as count 
                 FROM players 
-                WHERE lobby_id = ? AND eliminated = 0
+                WHERE lobby_id = ?
             `, [lobbyId]),
                 dbInstance.all(`
                 SELECT COUNT(*) as count 
@@ -740,26 +740,18 @@ socket.on("join-lobby", async (data: { username: string; lobbyCode: string }, ca
 
             // If all players have voted, trigger results calculation
             if (activePlayers[0].count === submittedVotes[0].count) {
-                const roundResult = await gameService.calculateRoundResults(lobbyId); // This line is already correct.
+                const roundResult = await gameService.calculateRoundResults(lobbyId);
                 io.to(lobbyId).emit("voting-complete", roundResult);
 
-                // End round and get next action
-                // Pass an empty object for the 'lobbies' parameter as it's no longer used by endRound
-                const nextAction = await gameService.endRound(lobbyId, roundResult, {}, io); 
+                // Compute final results before cleanup (single-round mode)
+                const finalResults = await gameService.calculateFinalResults(lobbyId);
 
-                // Update lobby data for next steps
-                const updatedLobby = await lobbyService.getLobbyById(lobbyId); // Fetch updated lobby data
+                // End round and cleanup persistent game data
+                const nextAction = await gameService.endRound(lobbyId, roundResult, {}, io);
 
                 if (nextAction === 'game_end') {
-                    // Emit final game results
-                    io.to(lobbyId).emit("game-end", await gameService.calculateFinalResults(lobbyId));
-                } else if (nextAction === 'next_round' && updatedLobby) { // ensure updatedLobby is not null
-                    // Emit round results and start next round
-                    io.to(lobbyId).emit("round-end", roundResult);
-                    // Use the current_round from the database, which was updated by startNewRound
-                    io.to(lobbyId).emit("round-start", {
-                        roundNumber: lobby.current_round
-                    });
+                    // Emit final game results (computed before cleanup)
+                    io.to(lobbyId).emit("game-end", finalResults);
                 }
             }
         } catch (error) {

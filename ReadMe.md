@@ -3,74 +3,73 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
-- [How to Play](#how-to-play)
-- [Game Concepts](#game-concepts)
-- [Operations](#operations)
+- [Ruleset (Codebase)](#ruleset-codebase)
+- [Operations (implemented)](#operations-implemented)
+- [Developer notes / where to look in code](#developer-notes--where-to-look-in-code)
 
 ## Introduction
 
-Triple is an online multiplayer social deduction game where players are divided into teams and must work together to achieve their objectives while trying to identify and eliminate members of the opposing team.
+Triple is an online multiplayer social-deduction game where players are secretly assigned to teams and receive one operation each that can provide information or change their win conditions. The rules below reflect the current implementation in the repository (server-side logic).
 
-## Game Concepts
+## Ruleset (Codebase)
 
-### Teams
+- **Single-round / ephemeral games:** Games run exactly one round. A game starts from the lobby, proceeds through assignment/operations/voting, emits final results to clients, and then the server immediately cleans up per-game data (players, votes, rounds) for that lobby so nothing persists between games. See `server/src/game-logic/gameService.ts`.
+- **Player counts:** Minimum players = `5`, Maximum players = `10`. (See `server/src/game-logic/config.ts` `GAME_CONFIG.MIN_PLAYERS` / `MAX_PLAYERS`.)
+- **Impostor assignment:** Number of impostors is based on the lobby size per `GAME_CONFIG.IMPOSTOR_THRESHOLDS`:
+  - 5–6 players: 2 impostors
+  - 7–10 players: 3 impostors
+- **Game flow (single round):**
+  1. Team assignment (teams and each player's operation are set)
+  2. Operations phase (server generates and persists operation info for each player)
+  3. Voting phase (players cast one vote each)
+  4. Results processing (votes are tallied, operations are processed using the computed round result, final results are emitted, then the server cleans up per-game data)
+- **Operations:** Every player receives exactly one operation (server-chosen and persisted). Some operations are marked `hidden` in the config and may change a player's team or win condition. Operations are prepared server-side and delivered to players immutably (see `OPERATION_CONFIG` and `generateOperationInfo` in `server/src/game-logic/config.ts` and `gameService.ts`).
 
-In Triple, players are secretly assigned to one of two teams:
+### Voting rules
 
-- **Agents:** The majority of players are Agents. Their primary goal is to identify all Impostors among them and vote them out. Agents must use deduction, communication, and observation to uncover the Impostors.
-- **Impostors:** A smaller group of players are Impostors. Their main objective is to deceive the Agents, avoid being voted out.
+- Each player (not disconnected) may cast exactly one vote for the single round.
+- Players cannot vote for themselves.
+- Votes are stored with the round number; once a vote is recorded the voter cannot vote again that round (server re-validates to avoid race conditions).
 
-### Winning Conditions
+### Elimination & ties (logical only)
 
-#### Round Win Conditions
+- After voting, the server tallies votes and identifies the maximum vote count.
+- Any players whose vote count equals the maximum are treated as the logically "eliminated" players for the purposes of computing results (ties can eliminate multiple players in the logical result).
 
-- **Agents win a round if:** 
-  - The player voted out is an impostor.
-- **Impostors win a round if:**
-  - The player voted out is an agent.
+### Game winner determination
 
-### Game Rounds
-- One Round consists of exactly three phases: 
-1. starting Phase: The players are assigned an association and have to wait for further intel to play the game
-2. operations phase: The players get an operations from the pool of operations available. There are rules to what operations are given out to players:
- - there are no duplicate operations
- - there is a limited amount of operations given out that change the objective for the respective player (hidden objectives)
- - one player only gets one operation
+### Final results and cleanup
 
-3. Voting Phase: every player has exactly one vote and can vote for anybody except himself. The player most voted is gettiong imprisoned.
+- The server composes a final results payload (per-player data, team scores, MVP, and the single round result) and emits it to the lobby before performing cleanup.
+- Immediately after emitting final results, the server removes per-game data (players, votes, rounds) for the lobby so a new game starts from a clean lobby state. This ensures no persistent per-game state remains between games.
+- See `calculateFinalResults` and `endRound` in `server/src/game-logic/gameService.ts`.
 
-- Based on the winning coditions of each player the result screen shows up and declares for each player if he lost or won his objective and what objective he got.
+## Operations (implemented)
 
-## Operations
+The repository implements a variety of operations which can be assigned to players. Operations are defined in `server/src/game-logic/config.ts` under `OPERATION_CONFIG` and referenced in `GAME_CONFIG.OPERATIONS`. Notable operations and their implemented effects:
 
-Every player Gets exactly one operation. But these can vary in input style and nature of information. Operations can change the winning objective or reveal information about some players.
+- `grudge` – Server selects a target for the player; if that target is among the logically eliminated players (i.e., voted out in the round), the grudge-holder is marked as `win` (their `win_status` is updated). The operation uses the computed round result rather than persisted elimination flags.
+- `infatuation` – A player becomes tied to a target player: after the round, the infatuated player's win status is set to match their target's win status.
+- `sleeper agent` – Appears to be on one team but is actually on the opposite team; `modifyWinCondition` flips the player's team on processing (and is marked to avoid double application).
+- `anonymous tip` – Server reveals a player's name and team field in the player's `operation_info` (no direct win-condition change).
+- `danish intelligence` – Server reveals one impostor and one agent (or fails if not enough players), and marks intel as revealed in the player's `operation_info`.
+- `confession` – Player chooses another player to reveal their team to (operation implementation prepares available players; processing is no-op in modifyWinCondition stub).
+- `old photographs` – Server picks two same-team players and reveals they are on the same team (team identity not revealed), marks operation info as revealed.
+- `defector` – Allows selecting a target player to flip to the opposite team; server updates the target's `team` when processed.
+- `scapegoat` – The player with this operation wins only if they are voted out (determined from the round's vote tally). The operation uses the in-memory round result to set `win_status` rather than relying on a persisted `eliminated` flag.
+- `secret intel` – Choose two players to investigate; server reveals results depending on their teams and stores it in `operation_info`.
+- `secret tip` – Server picks a random player and reveals their association (no win-condition change).
 
-### 1. Confession
+Note: Each operation may have a `modifyWinCondition` hook that runs after votes are tallied. Hooks receive the computed `roundResult` (which contains the logically eliminated players) and should use that in-memory information to adjust `win_status` or teams. For backward compatibility some hooks may fall back to DB flags if present, but current single-round mode prefers the `roundResult` and does not persist eliminations between games. Operations are intentionally applied server-side to avoid client tampering.
 
-- **Description:** Allows a player to reveal their true team identity (e.g., Agent or Impostor) to another chosen player. This is a risky move that can build trust or expose you.
-- **Player Information/Choice:** The player with this operation is presented with a list of other players in the game. They must choose one player to reveal their team identity to.
-- **Outcome:** The chosen target player receives a notification indicating the team of the player who used the Confession. The player using the Confession does not receive any information in return. The other player get a notification to declare who the player chose.
+## Developer notes / where to look in code
 
-### 2. Defector
+- Operation definitions and generation: `server/src/game-logic/config.ts` (`GAME_CONFIG` and `OPERATION_CONFIG`).
+- Core round logic, voting validation, assignment, and result calculation: `server/src/game-logic/gameService.ts`.
+- Vote validation helpers: `server/src/utils/validators.ts`.
+- Types and phase enums: `server/src/game-logic/types.ts`.
 
-- **Description:** Allows a player (Agent or Impostor) to attempt to switch their team. This operation introduces uncertainty and can shift the balance of power. The success or specific outcome (e.g., if the player knows their new team immediately) might vary.
-- **Player Information/Choice:** The player with this operation is presented with a choice to try and defect to the opposing team.
-- **Outcome:** If the player chooses to defect, their team alignment is changed by the server. The player is informed of their new team status. Other players are not directly informed of this change by the operation itself.
+---
 
-### 3. Grudge
+_Updated to reflect code implementation (inspected `server/src/game-logic/config.ts` and `server/src/game-logic/gameService.ts`)._
 
-- **Description:** The player receives a name. The player only wins if this player is voted out in the voting phase.
-- **Player Information/Choice:** The player only receives the info of the playername.
-- **Outcome:** The only change is the objective of the player receiving the operation.
-
-### 4. Danish Intelligence
-
-- **Description:** An operation that provides the player with information about the team alignment of two players that he chooses.
-- **Player Information/Choice:** The player is presented with a list of other players and must select two players. The player is presented with these possible information: "both players are agents" or "one or more players is affiliated with impostors"
-- **Outcome:** The player receives the information described above.
-
-### 5. Old Photographs
-
-- **Description:** This operation reveals to the player whether two chosen players are on the same team or different teams, without revealing their specific team alignments. This can help deduce relationships and potential Impostor pairings or confirm Agent alliances.
-- **Player Information/Choice:** The player is given two nams chosen by the server. These names are guaranteed to be working togehter on the same team but it is not presented which team.
-- **Outcome:** The player receives a message stating the two player names.
