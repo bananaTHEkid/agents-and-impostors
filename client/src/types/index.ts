@@ -150,3 +150,23 @@ export interface ClientToServerEvents {
   castVote: (data: CastVoteData) => void;
   // …existing events
 }
+
+// Operation-related types
+export interface OperationInfo {
+  [key: string]: any;
+}
+
+export interface Operation {
+  name: string;
+  info?: OperationInfo;
+  used?: boolean;
+}
+
+export interface OperationRendererProps {
+  operation: Operation | null;
+  lobbyCode: string;
+  username: string;
+  socket?: any;
+  onSubmit?: (payload: Record<string, any>) => void;
+  disabled?: boolean;
+}

@@ -19,6 +19,7 @@ import {
   GameMessage,
 } from "@/types";
 import GameInfo from "./GameInfo";
+import OperationPanel from '@/components/operations/OperationPanel';
 interface PlayerOperation {
   name: string;
     details: {
@@ -67,7 +68,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     const saved = sessionStorage.getItem('myOperation');
     return saved ? JSON.parse(saved) as PlayerOperation : null;
   });
-  const [operationTargetPlayer, setOperationTargetPlayer] = useState<string | null>(null);
+  // operationTargetPlayer is now handled inside OperationPanel renderers
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const username: string = sessionStorage.getItem("username") ?? "";
 
@@ -207,7 +208,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           // Specific details like 'confessionMade' or 'targetPlayer' would ideally come from a fresh 'operation-prepared'.
           return { ...prevOp, used: true };
         });
-        setOperationTargetPlayer(null); // Clear selection
       } else {
         setErrorMessage(data.message || "Failed to use operation.");
       }
@@ -306,37 +306,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     setUserInput("");
   };
 
-   const handleUseConfession = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!socket || !myOperation || myOperation.name !== "confession" || !operationTargetPlayer || !lobbyCode) {
-      setErrorMessage("Cannot use confession. Lobby code or target missing.");
-      return;
-    }
-    if (myOperation.details.confessionMade || myOperation.used) {
-      setErrorMessage("Confession already made.");
-      return;
-    }
-    socket.emit("use-confession", {
-      lobbyCode,
-      targetPlayer: operationTargetPlayer,
-    });
-  };
-
-  const handleUseDefector = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!socket || !myOperation || myOperation.name !== "defector" || !operationTargetPlayer || !lobbyCode) {
-      setErrorMessage("Cannot use defector. Lobby code or target missing.");
-      return;
-    }
-    if (myOperation.details.targetPlayer || myOperation.used) {
-      setErrorMessage("Defector target already chosen.");
-      return;
-    }
-    socket.emit("use-defector", {
-      lobbyCode,
-      targetPlayer: operationTargetPlayer,
-    });
-  };
+  // Confession/Defector handling moved to OperationPanel and renderers
 
   const handleVote = (targetPlayer: string) => {
     if (!socket || currentPhase !== GamePhase.VOTING) return;
@@ -410,69 +380,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           <div className="text-center p-4">
             <h4>Operation Assignment Phase</h4>
             <p>Special operations are being assigned to players...</p>
-            {myOperation && (
-              <Alert variant="info" className="mt-3">
-                <h5 className="mb-2">Your Operation: {myOperation.name}</h5>
-                {myOperation.details.message && <p className="mb-3">{myOperation.details.message}</p>}
-
-                {/* Informational details for specific operations */}
-                {myOperation.name === "grudge" && myOperation.details.grudgeTarget && (
-                  <p><strong>Grudge Target:</strong> {myOperation.details.grudgeTarget}</p>
-                )}
-                {myOperation.name === "danish intelligence" && myOperation.details.revealedAgent && myOperation.details.revealedImpostor && (
-                  <p><strong>Intel:</strong> {myOperation.details.revealedAgent} (Agent), {myOperation.details.revealedImpostor} (Impostor).</p>
-                )}
-                {myOperation.name === "old photographs" && myOperation.details.revealedPlayers && myOperation.details.revealedPlayers.length > 0 && (
-                  <p><strong>Photographs show:</strong> {myOperation.details.revealedPlayers.join(' and ')} are on the same team.</p>
-                )}
-
-                {/* Actionable UI for Confession */}
-                {myOperation.name === "confession" && !myOperation.details.confessionMade && !myOperation.used && myOperation.details.availablePlayers && myOperation.details.availablePlayers.length > 0 && (
-                  <Form className="mt-3" onSubmit={handleUseConfession}>
-                    <Form.Group className="mb-2">
-                      <Form.Label>Choose player to confess your team to:</Form.Label>
-                      <Form.Select
-                        value={operationTargetPlayer || ""}
-                        onChange={(e) => setOperationTargetPlayer(e.target.value)}
-                        required
-                      >
-                        <option value="" disabled>Select a player</option>
-                        {myOperation.details.availablePlayers
-                            .filter(p => p !== username)
-                            .map(p => <option key={p} value={p}>{p}</option>)}
-                      </Form.Select>
-                    </Form.Group>
-                    <Button type="submit" variant="primary" size="sm">Confess Team</Button>
-                  </Form>
-                )}
-                {myOperation.name === "confession" && (myOperation.details.confessionMade || myOperation.used) && (
-                    <p className="text-success mt-2"><FiCheckCircle className="me-1"/>You have made your confession.</p>
-                )}
-
-                {/* Actionable UI for Defector */}
-                {myOperation.name === "defector" && !myOperation.details.targetPlayer && !myOperation.used && myOperation.details.availablePlayers && myOperation.details.availablePlayers.length > 0 && (
-                  <Form className="mt-3" onSubmit={handleUseDefector}>
-                    <Form.Group className="mb-2">
-                      <Form.Label>Choose player to target for defection:</Form.Label>
-                      <Form.Select
-                        value={operationTargetPlayer || ""}
-                        onChange={(e) => setOperationTargetPlayer(e.target.value)}
-                        required
-                      >
-                        <option value="" disabled>Select a player</option>
-                        {myOperation.details.availablePlayers
-                            .filter(p => p !== username)
-                            .map(p => <option key={p} value={p}>{p}</option>)}
-                      </Form.Select>
-                    </Form.Group>
-                    <Button type="submit" variant="warning" size="sm">Choose Defection Target</Button>
-                  </Form>
-                )}
-                {myOperation.name === "defector" && (myOperation.details.targetPlayer || myOperation.used) && (
-                    <p className="text-info mt-2"><FiCheckCircle className="me-1"/>Your defector choice ({myOperation.details.targetPlayer || 'target'}) has been registered.</p>
-                )}
-              </Alert>
-            )}
+            <div className="mt-3">
+              <OperationPanel
+                operation={myOperation ? { name: myOperation.name, info: myOperation.details, used: myOperation.used } : null}
+                lobbyCode={lobbyCode}
+                username={username}
+                socket={socket}
+              />
+            </div>
           </div>
         );
         

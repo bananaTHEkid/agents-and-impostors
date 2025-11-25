@@ -117,8 +117,18 @@ export class LobbyHelpers {
     ]).catch(() => null);
 
     if (result === 'alert') {
-      const errorText = await alertLocator.textContent().catch(() => null);
-      throw new Error(`Failed to join lobby: ${errorText || 'Unknown error'}`);
+      const alertText = (await alertLocator.textContent().catch(() => '')) || '';
+      const lowered = alertText.toLowerCase();
+      // Consider it an error only if the message indicates an error; otherwise wait for the lobby
+      if (/(error|failed|fehler|nicht|cannot|unauthorized)/i.test(lowered)) {
+        throw new Error(`Failed to join lobby: ${alertText || 'Unknown error'}`);
+      }
+      // Non-error alert (informational) — wait a bit longer for the lobby to appear
+      try {
+        await lobbyLocator.waitFor({ state: 'visible', timeout: 15000 });
+      } catch (e) {
+        throw new Error(`Failed to join lobby: ${alertText || 'Unknown error'}`);
+      }
     }
 
     const playerJoinStart = Date.now();

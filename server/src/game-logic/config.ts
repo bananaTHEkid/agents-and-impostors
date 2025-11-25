@@ -9,17 +9,17 @@ export const GAME_CONFIG = {
         { min: 7, max: 10, count: 3 }
     ],
     OPERATIONS: [
-        {name: "grudge", hidden: true},
-        {name: "infatuation", hidden: true},
-        {name: "scapegoat", hidden: true},
-        {name: "sleeper agent", hidden: true},
-        {name: "secret intel", hidden: true},
-        {name: "secret tip", hidden: true},
-        {name: "confession", hidden: false},
-        {name: "old photographs", hidden: false},
-        {name: "danish intelligence", hidden: false},
-        {name: "anonymous tip", hidden: false},
-        {name: "defector", hidden: true},
+        {name: "grudge", hidden: true, clientChooses: false},
+        {name: "infatuation", hidden: true, clientChooses: false},
+        {name: "scapegoat", hidden: true, clientChooses: false},
+        {name: "sleeper agent", hidden: true, clientChooses: false},
+        {name: "secret intel", hidden: true, clientChooses: false},
+        {name: "secret tip", hidden: true, clientChooses: false},
+        {name: "confession", hidden: false, clientChooses: true},
+        {name: "old photographs", hidden: false, clientChooses: false},
+        {name: "danish intelligence", hidden: false, clientChooses: true},
+        {name: "anonymous tip", hidden: false, clientChooses: false},
+        {name: "defector", hidden: true, clientChooses: true},
     ]
 };
 

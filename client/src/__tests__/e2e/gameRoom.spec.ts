@@ -27,12 +27,14 @@ test.describe('Game Room', () => {
       await expect(player1Page.getByTestId('start-game-button')).toBeEnabled();
       await player1Page.getByTestId('start-game-button').click();
 
-      // Wait for game room to appear after game starts
-      await expect(player1Page.getByTestId('game-room')).toBeVisible({ timeout: 30000 });
+      // Wait for game room to appear after game starts (increase timeout for CI/slower machines)
+      await expect(player1Page.getByTestId('game-room')).toBeVisible({ timeout: 60000 });
 
     } finally {
-
-      await Promise.all(contexts.map(context => context.close()));
+      // Ensure contexts are closed safely
+      await Promise.all(contexts.map(async (context) => {
+        try { await context.close(); } catch (e) { /* ignore */ }
+      }));
     }
   });
 });

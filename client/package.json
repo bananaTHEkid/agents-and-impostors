@@ -10,11 +10,13 @@
     "preview": "vite preview",
     "test": "npm run test:unit && npm run test:e2e:dev",
     "test:unit": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "cross-env START_SERVER=true playwright test",
     "test:e2e:dev": "playwright test",
-    "test:e2e:dev:with-server": "START_SERVER=true playwright test",
+    "test:e2e:dev:with-server": "cross-env START_SERVER=true playwright test",
+    "test:e2e:watch": "cross-env START_SERVER=true playwright test --watch",
+    "playwright:install": "npx playwright install --with-deps",
     "test:e2e:prod": "E2E_ENV=production playwright test",
-    "test:e2e:ci": "CI=true START_SERVER=true playwright test",
+    "test:e2e:ci": "cross-env CI=true START_SERVER=true playwright test",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
@@ -51,7 +53,8 @@
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.31.1",
     "vite": "^5.1.0",
-    "vitest": "^1.2.2"
+    "vitest": "^1.2.2",
+    "cross-env": "^7.0.3"
   },
   "resolutions": {
     "@types/react": "^18.2.55",

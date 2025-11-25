@@ -132,11 +132,12 @@ test.describe.serial('Game Lobby', () => {
       await page.getByTestId('join-game-button').click();
 
       // Assert - Error message should be displayed
-      const errorAlert = page.getByRole('alert');
-      await expect(errorAlert).toBeVisible({ timeout: 10000 });
-      const errorText = await errorAlert.textContent();
+      // Use explicit text match for robustness instead of relying on role lookup
+      const errorTextLocator = page.getByText('Invalid lobby code format');
+      await expect(errorTextLocator).toBeVisible({ timeout: 10000 });
+      const errorText = await errorTextLocator.textContent();
       expect(errorText).toBeTruthy();
-      expect(errorText?.toLowerCase()).toContain('error');
+      expect(errorText?.toLowerCase()).toContain('invalid lobby code');
     });
   });
 
