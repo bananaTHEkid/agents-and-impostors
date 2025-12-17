@@ -16,6 +16,7 @@ import {
   ErrorData,
   JoinSuccessData,
   GameMessage,
+  RoundResult,
 } from "@/types";
 import GameInfo from "./GameInfo";
 import OperationPanel from '@/components/operations/OperationPanel';
@@ -68,6 +69,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     const saved = sessionStorage.getItem('myOperation');
     return saved ? JSON.parse(saved) as PlayerOperation : null;
   });
+  const [finalRound, setFinalRound] = useState<RoundResult | null>(null);
   // operationTargetPlayer is now handled inside OperationPanel renderers
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string | null>(null);
   const username: string = sessionStorage.getItem("username") ?? "";
@@ -282,9 +284,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           operation: p.operation,
           win_status: p.winStatus || p.win_status || (p.team === finalResults.overallWinner ? 'win' : 'lose')
         })) : [];
+        const round: RoundResult | null = Array.isArray(finalResults?.roundResults) && finalResults.roundResults.length
+          ? finalResults.roundResults[0]
+          : null;
         setCurrentPhase(GamePhase.COMPLETED);
         setMessages((prev) => ([...prev, { type: 'system', text: `Game has ended. Check results!` }]));
         setGameData((prev: GameState | null) => ({ ...(prev || {}), results: mapped, phase: GamePhase.COMPLETED }));
+        setFinalRound(round);
       } catch (e) {
         console.error('Failed to handle game-end payload', e);
       }
@@ -390,23 +396,106 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           </div>
         );
         
-      case GamePhase.COMPLETED:
+      case GamePhase.COMPLETED: {
+        const norm = (s?: string) => (s || '').toLowerCase();
+        const winners = (gameData?.results || []).filter(r => ['win', 'won', 'victory'].includes(norm(r.win_status)));
+        const losers = (gameData?.results || []).filter(r => ['lose', 'lost', 'defeat'].includes(norm(r.win_status)));
+        const votedCounts = React.useMemo(() => {
+          if (!finalRound?.votes) return { counts: {} as Record<string, number>, max: 0 };
+          const counts: Record<string, number> = {};
+          Object.values(finalRound.votes).forEach(target => {
+            counts[target] = (counts[target] || 0) + 1;
+          });
+          const max = Object.values(counts).length ? Math.max(...Object.values(counts)) : 0;
+          return { counts, max };
+        }, [finalRound]);
         return (
           <div className="text-center p-4">
             <h4>Game Completed</h4>
             {gameData?.results && (
-              <div className="results mt-3">
-                <h5>Results:</h5>
-                <ListGroup>
-                  {gameData.results.map((result) => (
-                    <ListGroup.Item
-                      key={result.username}
-                      variant={result.win_status === "won" ? "success" : "danger"}
-                    >
-                      {result.username}: {result.team} - {result.operation} ({result.win_status})
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
+              <div className="results mt-3 text-left">
+                {finalRound && (
+                  <div className="mb-4 bg-amber-50 text-amber-800 border border-amber-100 rounded-xl overflow-hidden">
+                    <div className="bg-amber-100/60 p-3 border-b border-amber-100">
+                      <h5 className="m-0 font-semibold">Voting Outcome</h5>
+                    </div>
+                    <div className="p-4">
+                      {finalRound.eliminatedPlayers && finalRound.eliminatedPlayers.length === 1 && (
+                        <div>
+                          <span className="font-medium">Voted out:</span> {finalRound.eliminatedPlayers[0]} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} votes)</span>}
+                        </div>
+                      )}
+                      {finalRound.eliminatedPlayers && finalRound.eliminatedPlayers.length > 1 && finalRound.eliminatedPlayers.length < (gameData?.results?.length || Infinity) && (
+                        <div>
+                          <span className="font-medium">Tie between:</span> {finalRound.eliminatedPlayers.join(', ')} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} votes each)</span>}
+                        </div>
+                      )}
+                      {finalRound.eliminatedPlayers && (finalRound.eliminatedPlayers.length === 0 || finalRound.eliminatedPlayers.length === (gameData?.results?.length || 0)) && (
+                        <div className="text-sm">No decisive elimination this round.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-green-50 p-3 border-b border-green-100">
+                      <h5 className="text-green-800 font-semibold m-0">Winners</h5>
+                    </div>
+                    <div className="p-4">
+                      {winners.length ? (
+                        <ul className="space-y-2">
+                          {winners.map((r) => (
+                            <li key={`win-${r.username}`} className="flex items-center justify-between p-3 rounded-lg border border-green-100 bg-green-50">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-medium">
+                                  {r.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-800">{r.username}</div>
+                                  <div className="text-xs text-gray-600">Operation: {r.operation || '—'}</div>
+                                </div>
+                              </div>
+                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200">
+                                {r.team}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-sm text-gray-500">No winners recorded.</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-red-50 p-3 border-b border-red-100">
+                      <h5 className="text-red-800 font-semibold m-0">Losers</h5>
+                    </div>
+                    <div className="p-4">
+                      {losers.length ? (
+                        <ul className="space-y-2">
+                          {losers.map((r) => (
+                            <li key={`lose-${r.username}`} className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-medium">
+                                  {r.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-800">{r.username}</div>
+                                  <div className="text-xs text-gray-600">Operation: {r.operation || '—'}</div>
+                                </div>
+                              </div>
+                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800 border border-red-200">
+                                {r.team}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-sm text-gray-500">No losers recorded.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
             <Button 
@@ -419,6 +508,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             </Button>
           </div>
         );
+      }
         
       default:
         return null;
