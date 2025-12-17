@@ -247,25 +247,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
               {operation === 'secret intel' && operationInfo && (
                 <div>
                   {operationInfo.revealed ? (
-                    <div>
-                      {operationInfo.revealed.message && (
-                        <p>{operationInfo.revealed.message}</p>
-                      )}
-                      {(operationInfo.revealed.target1Name || operationInfo.revealed.target2Name) && (
-                        <ul className="mb-0">
-                          {operationInfo.revealed.target1Name && (
-                            <li>
-                              {operationInfo.revealed.target1Name}: {operationInfo.revealed.target1Team}
-                            </li>
-                          )}
-                          {operationInfo.revealed.target2Name && (
-                            <li>
-                              {operationInfo.revealed.target2Name}: {operationInfo.revealed.target2Team}
-                            </li>
-                          )}
-                        </ul>
-                      )}
-                    </div>
+                    <p>{operationInfo.revealed.message}</p>
                   ) : (
                     <p>Waiting for intelligence results…</p>
                   )}

@@ -298,14 +298,15 @@ export const OPERATION_CONFIG: Record<
                         const shouldReveal = oneOrBothImpostors || bothAgents;
 
                         if (shouldReveal) {
+                            const msg = oneOrBothImpostors
+                                ? `Out of ${info.targetPlayer1} and ${info.targetPlayer2}, one or more of them are impostors.`
+                                : `${info.targetPlayer1} and ${info.targetPlayer2} are both agents.`;
                             info.revealed = {
                                 target1Name: info.targetPlayer1,
                                 target1Team: target1.team,
                                 target2Name: info.targetPlayer2,
                                 target2Team: target2.team,
-                                message: oneOrBothImpostors
-                                    ? "At least one of your targets is an impostor!"
-                                    : "Both of your targets are agents!"
+                                message: msg
                             };
                         } else {
                             info.revealed = {
@@ -527,26 +528,13 @@ export const OPERATION_CONFIG: Record<
                     
                     if (!target1 || !target2) continue;
                     
-                    // Determine revelation
-                    const oneOrBothVirus = target1.team === 'impostor' || target2.team === 'impostor';
-                    const bothService = target1.team === 'agent' && target2.team === 'agent';
-                    const shouldReveal = oneOrBothVirus || bothService;
-                    
-                    if (shouldReveal) {
-                        info.revealed = {
-                            target1Name: info.targetPlayer1,
-                            target1Team: target1.team,
-                            target2Name: info.targetPlayer2,
-                            target2Team: target2.team,
-                            message: oneOrBothVirus 
-                                ? "At least one of your targets is a virus agent!" 
-                                : "Both of your targets are service agents!"
-                        };
-                    } else {
-                        info.revealed = {
-                            message: "One is a virus agent and one is a service agent (no revelation)"
-                        };
-                    }
+                    // Determine summary-only revelation (no per-player details)
+                    const oneOrMoreImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                    const bothAgents = target1.team === 'agent' && target2.team === 'agent';
+                    const message = oneOrMoreImpostors
+                        ? 'One or more of these players are impostors.'
+                        : (bothAgents ? 'The players are agents.' : 'Intelligence is inconclusive.');
+                    info.revealed = { message };
                     
                     await db.run(
                         "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",

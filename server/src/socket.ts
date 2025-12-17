@@ -348,32 +348,20 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                 [lobbyId, t2]
               );
               if (target1 && target2) {
-                const oneOrBothImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                const oneOrMoreImpostors = target1.team === 'impostor' || target2.team === 'impostor';
                 const bothAgents = target1.team === 'agent' && target2.team === 'agent';
-                const shouldReveal = oneOrBothImpostors || bothAgents;
-
-                let reveal: any;
-                if (shouldReveal) {
-                  reveal = {
-                    target1Name: t1,
-                    target1Team: target1.team,
-                    target2Name: t2,
-                    target2Team: target2.team,
-                    message: oneOrBothImpostors
-                      ? 'At least one of your targets is an impostor!'
-                      : 'Both of your targets are agents!'
-                  };
-                } else {
-                  reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
-                }
+                // Only disclose a summary, never per-player team details
+                const message = oneOrMoreImpostors
+                  ? 'One or more of these players are impostors.'
+                  : (bothAgents ? 'The players are agents.' : 'Intelligence is inconclusive.');
 
                 await db.run(
                   "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
-                  [JSON.stringify({ revealed: reveal }), lobbyId, username]
+                  [JSON.stringify({ revealed: { message } }), lobbyId, username]
                 );
 
                 // Notify only the accepting player
-                socket.emit('operation-info', { operation: 'secret intel', info: { revealed: reveal }, message: reveal.message });
+                socket.emit('operation-info', { operation: 'secret intel', info: { revealed: { message } }, message });
               }
             }
           }
@@ -630,14 +618,15 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
                 let reveal: any;
                 if (shouldReveal) {
+                  const message = oneOrBothImpostors
+                    ? `Out of ${t1} and ${t2}, one or more of them are impostors.`
+                    : `${t1} and ${t2} are both agents.`;
                   reveal = {
                     target1Name: t1,
                     target1Team: target1.team,
                     target2Name: t2,
                     target2Team: target2.team,
-                    message: oneOrBothImpostors
-                      ? 'At least one of your targets is an impostor!'
-                      : 'Both of your targets are agents!'
+                    message
                   };
                 } else {
                   reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
