@@ -53,6 +53,47 @@ export function updateLobbyCode(socketId: string, lobbyCode: string): void {
     }
 }
 
+function getConnectedCountForLobby(lobbyCode: string): number {
+    let count = 0;
+    for (const code of socketToLobbyMap.values()) {
+        if (code === lobbyCode) count++;
+    }
+    return count;
+}
+
+async function hardDeleteLobby(lobbyCode: string, io: Server): Promise<void> {
+    try {
+        const { getDB } = await import('./db/db');
+        const db = getDB();
+        const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
+        if (!lobby) return;
+        const lobbyId = lobby.id;
+
+        // Remove all DB state tied to this lobby
+        await db.run("DELETE FROM connection_sessions WHERE lobby_code = ?", [lobbyCode]);
+        await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+        await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
+        await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
+        await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
+
+        // Remove any lingering socket mappings for this lobby (defensive)
+        for (const [sid, code] of Array.from(socketToLobbyMap.entries())) {
+            if (code === lobbyCode) {
+                const uname = socketToUsernameMap.get(sid);
+                socketToLobbyMap.delete(sid);
+                socketToUsernameMap.delete(sid);
+                if (uname) userToSocketIdMap.delete(uname);
+                // Ensure socket is disconnected if still around
+                const sock = io.sockets.sockets.get(sid);
+                if (sock) try { sock.disconnect(true); } catch {}
+            }
+        }
+        console.log(`[Cleanup] Deleted empty lobby ${lobbyCode} and all associated state.`);
+    } catch (err) {
+        console.error(`[Cleanup] Failed deleting lobby ${lobbyCode}:`, err);
+    }
+}
+
 export function cleanupOldSocket(username: string, currentSocketId: string, io: Server): void {
     const oldSocketId = userToSocketIdMap.get(username);
     if (oldSocketId && oldSocketId !== currentSocketId) {
@@ -134,8 +175,16 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
         }
     }
     
-    // Clean up connection mappings (always remove socket connection)
+    // Clean up connection mappings (always remove this socket connection)
     removeConnection(socketId);
+
+    // If this was the last connected socket in the lobby, delete the lobby and all residual state
+    if (lobbyCode) {
+        const remaining = getConnectedCountForLobby(lobbyCode);
+        if (remaining === 0) {
+            await hardDeleteLobby(lobbyCode, io);
+        }
+    }
 }
 
 // Utility function to get all connected users
