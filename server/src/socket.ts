@@ -329,6 +329,58 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, username]);
 
+        // If this player has 'secret intel', compute and reveal immediately to them
+        try {
+          if (playerOpName && typeof playerOpName === 'string' && playerOpName.toLowerCase() === 'secret intel') {
+            let opInfo: any = {};
+            if (playerOpInfoRaw) {
+              try { opInfo = JSON.parse(playerOpInfoRaw); } catch { opInfo = {}; }
+            }
+            const t1 = opInfo?.targetPlayer1;
+            const t2 = opInfo?.targetPlayer2;
+            if (t1 && t2) {
+              const target1 = await db.get(
+                "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, t1]
+              );
+              const target2 = await db.get(
+                "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, t2]
+              );
+              if (target1 && target2) {
+                const oneOrBothImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                const bothAgents = target1.team === 'agent' && target2.team === 'agent';
+                const shouldReveal = oneOrBothImpostors || bothAgents;
+
+                let reveal: any;
+                if (shouldReveal) {
+                  reveal = {
+                    target1Name: t1,
+                    target1Team: target1.team,
+                    target2Name: t2,
+                    target2Team: target2.team,
+                    message: oneOrBothImpostors
+                      ? 'At least one of your targets is an impostor!'
+                      : 'Both of your targets are agents!'
+                  };
+                } else {
+                  reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
+                }
+
+                await db.run(
+                  "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+                  [JSON.stringify({ revealed: reveal }), lobbyId, username]
+                );
+
+                // Notify only the accepting player
+                socket.emit('operation-info', { operation: 'secret intel', info: { revealed: reveal }, message: reveal.message });
+              }
+            }
+          }
+        } catch (intelErr) {
+          console.error('Error revealing secret intel on accept:', intelErr);
+        }
+
         // Use turn order to find the next unassigned player (starting after current player)
         const turnState = turnStateByLobby[lobbyId];
         if (!turnState) {
@@ -418,7 +470,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
           return;
         }
-        if (!validateVoteData(socket.handshake.auth?.username || '', targetPlayer)) {
+        if (!validateVoteData(emitter || '', targetPlayer)) {
           socket.emit('error', { message: 'Invalid confession target' });
           return;
         }
@@ -495,7 +547,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
           return;
         }
-        if (!validateVoteData(socket.handshake.auth?.username || '', targetPlayer)) {
+        if (!validateVoteData(emitter || '', targetPlayer)) {
           socket.emit('error', { message: 'Invalid defector target' });
           return;
         }
@@ -556,6 +608,55 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
           [JSON.stringify(sanitized), lobbyId, emitter]
         );
+
+        // For 'danish intelligence', compute and reveal intel immediately to the emitter
+        if (typeof operation === 'string' && operation.toLowerCase() === 'danish intelligence') {
+          try {
+            const t1 = payload?.targetPlayer1;
+            const t2 = payload?.targetPlayer2;
+            if (t1 && t2) {
+              const target1 = await db.get(
+                "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, t1]
+              );
+              const target2 = await db.get(
+                "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                [lobbyId, t2]
+              );
+              if (target1 && target2) {
+                const oneOrBothImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                const bothAgents = target1.team === 'agent' && target2.team === 'agent';
+                const shouldReveal = oneOrBothImpostors || bothAgents;
+
+                let reveal: any;
+                if (shouldReveal) {
+                  reveal = {
+                    target1Name: t1,
+                    target1Team: target1.team,
+                    target2Name: t2,
+                    target2Team: target2.team,
+                    message: oneOrBothImpostors
+                      ? 'At least one of your targets is an impostor!'
+                      : 'Both of your targets are agents!'
+                  };
+                } else {
+                  reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
+                }
+
+                // Persist reveal into operation_info
+                await db.run(
+                  "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+                  [JSON.stringify({ revealed: reveal }), lobbyId, emitter]
+                );
+
+                // Notify emitter only with structured info
+                socket.emit('operation-info', { operation, info: { revealed: reveal }, message: reveal.message });
+              }
+            }
+          } catch (intelErr) {
+            console.error('Error generating immediate intel reveal:', intelErr);
+          }
+        }
 
         socket.emit('operation-used', { success: true, message: 'Operation submitted.' });
         io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} used operation ${operation}` });

@@ -16,6 +16,13 @@ interface OperationInfo {
   revealedPlayer?: string;
   team?: string;
   secretCode?: number;
+  revealed?: {
+    target1Name?: string;
+    target1Team?: 'agent' | 'impostor' | string;
+    target2Name?: string;
+    target2Team?: 'agent' | 'impostor' | string;
+    message?: string;
+  };
 }
 
 interface GameInfoProps {
@@ -78,6 +85,12 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         console.log(`Game results: ${JSON.stringify(data.results)}`);
       });
 
+      // Live updates to operation info (e.g., Danish Intelligence reveal)
+      socket.on('operation-info', (data: { operation: string; info: Partial<OperationInfo>; message?: string }) => {
+        // Only merge if this component is showing that operation
+        setOperationInfo((prev) => ({ ...(prev || {}), ...(data.info || {}) }));
+      });
+
       socket.on('player-joined', (data: PlayerJoinedData) => {
         console.log(`${data.username} joined the game.`);
       });
@@ -95,6 +108,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         socket.off('game-results');
         socket.off('player-joined');
         socket.off('error');
+        socket.off('operation-info');
       };
     }
   }, [socket, username]);
@@ -123,7 +137,14 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
 
   // Only show team and operation info after they're assigned
   const showTeamInfo: boolean = phase !== GamePhase.WAITING && team !== null && !showTeamReveal;
-  const showOperationInfo: boolean = operation !== null && (phase === GamePhase.VOTING || phase === GamePhase.COMPLETED);
+  const hasImmediateReveal = !!(operationInfo && (operationInfo as any).revealed);
+  const showOperationInfo: boolean =
+    operation !== null && (
+      phase === GamePhase.VOTING ||
+      phase === GamePhase.COMPLETED ||
+      // Show during assignment if reveal exists (e.g., danish intelligence, secret intel, photographs)
+      (phase === GamePhase.OPERATION_ASSIGNMENT && hasImmediateReveal)
+    );
 
   // Team reveal component
   const renderTeamReveal = (): JSX.Element | null => {
@@ -194,13 +215,61 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
                 <p>Anonymous tip about {operationInfo.revealedPlayer}: Team {operationInfo.team}.</p>
               )}
               {operation === 'danish intelligence' && operationInfo && (
-                <p>Your secret code: {operationInfo.secretCode}</p>
+                <div>
+                  {operationInfo.revealed ? (
+                    <div>
+                      {operationInfo.revealed.message && (
+                        <p>{operationInfo.revealed.message}</p>
+                      )}
+                      {(operationInfo.revealed.target1Name || operationInfo.revealed.target2Name) && (
+                        <ul className="mb-0">
+                          {operationInfo.revealed.target1Name && (
+                            <li>
+                              {operationInfo.revealed.target1Name}: {operationInfo.revealed.target1Team}
+                            </li>
+                          )}
+                          {operationInfo.revealed.target2Name && (
+                            <li>
+                              {operationInfo.revealed.target2Name}: {operationInfo.revealed.target2Team}
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  ) : (
+                    <p>Waiting for intelligence results…</p>
+                  )}
+                </div>
               )}
               {operation === 'confession' && (
                 <p>Your role is visible to others.</p>
               )}
-              {operation === 'secret intel' && (
-                <p>You have secret intelligence about other players.</p>
+              {operation === 'secret intel' && operationInfo && (
+                <div>
+                  {operationInfo.revealed ? (
+                    <div>
+                      {operationInfo.revealed.message && (
+                        <p>{operationInfo.revealed.message}</p>
+                      )}
+                      {(operationInfo.revealed.target1Name || operationInfo.revealed.target2Name) && (
+                        <ul className="mb-0">
+                          {operationInfo.revealed.target1Name && (
+                            <li>
+                              {operationInfo.revealed.target1Name}: {operationInfo.revealed.target1Team}
+                            </li>
+                          )}
+                          {operationInfo.revealed.target2Name && (
+                            <li>
+                              {operationInfo.revealed.target2Name}: {operationInfo.revealed.target2Team}
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  ) : (
+                    <p>Waiting for intelligence results…</p>
+                  )}
+                </div>
               )}
               {operation === 'old photographs' && (
                 <p>You possess old photographs that reveal information.</p>

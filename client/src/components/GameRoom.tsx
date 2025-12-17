@@ -185,22 +185,33 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
-          console.log(`Operation details received for ${data.operation}:`, data.info);
-          // Always mark newly prepared operation as not used. Server controls whether
-          // the operation has already been applied; client should allow the player
-          // to interact unless server explicitly marks it used via `operation-used` event.
-          setMyOperation({ name: data.operation, info: data.info, used: false });
+      console.log(`Operation details received for ${data.operation}:`, data.info);
+      // Preserve used flag if same operation gets updated info
+      setMyOperation(prev => {
+        const used = prev && prev.name === data.operation ? !!prev.used : false;
+        return { name: data.operation, info: data.info, used } as PlayerOperation;
+      });
 
-          // Add a user-friendly message about their prepared operation
-          setMessages((prev) => [
-            ...prev,
-            {
-              type: "system",
-              // Customize this message based on the operation and its info for better UX
-              text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
-            },
-          ]);
-        });
+      // Add a user-friendly message about their prepared operation
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "system",
+          text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
+        },
+      ]);
+    });
+
+    // Receive structured operation info updates (e.g., danish intelligence reveal)
+    socket.on('operation-info', (data: { operation: string; info: Partial<PlayerOperation['details']>; message?: string }) => {
+      setMyOperation(prev => {
+        if (!prev || prev.name !== data.operation) return prev;
+        return { ...prev, info: { ...prev.info, ...(data.info as any) } } as PlayerOperation;
+      });
+      if (data.message) {
+        setMessages(prev => ([...prev, { type: 'system', text: data.message } ]));
+      }
+    });
     socket.on("operation-used", (data: { operation?: string; success: boolean; message?: string }) => {
       if (data.success) {
         setMessages((prev) => [
@@ -219,6 +230,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       } else {
         setErrorMessage(data.message || "Failed to use operation.");
       }
+    });
+    // Receive confession reveal from another player
+    socket.on('confession-received', (data: { type?: string; fromPlayer: string; theirTeam: 'agent' | 'impostor' | string }) => {
+      const readableTeam = data.theirTeam === 'impostor' ? 'impostor' : (data.theirTeam === 'agent' ? 'agent' : String(data.theirTeam));
+      setMessages(prev => ([
+        ...prev,
+        { type: 'system', text: `${data.fromPlayer} confesses: they are a ${readableTeam}.` }
+      ]));
     });
     // Listen for turn lifecycle
     socket.on('turn-start', (data: { currentTurnPlayer: string; turnIndex: number }) => {
@@ -308,7 +327,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("team-assignment");
       socket.off("operation-assigned");
       socket.off("operation-prepared");
+      socket.off('operation-info');
       socket.off("operation-used");
+      socket.off('confession-received');
       socket.off('turn-start');
       socket.off('turn-change');
       socket.off("player-voted");
