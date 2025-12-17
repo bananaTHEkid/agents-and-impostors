@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Alert } from 'react-bootstrap';
 import { useSocket } from '@/Socket/useSocket';
 import {
   OperationAssignedData,
@@ -138,48 +137,47 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   const showOperationInfo: boolean = operation !== null;
 
   return (
-    <Card className={`mb-4 ${className || ''}`}>
-      <Card.Header className="d-flex justify-content-between align-items-center">
-        <h5>Your Status</h5>
-      </Card.Header>
-      <Card.Body>
+    <div className={`bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 ${className || ''}`}>
+      <div className="bg-indigo-50 p-4 border-b border-indigo-100">
+        <h3 className="text-xl font-semibold text-gray-800">Your Status</h3>
+      </div>
+      <div className="p-4">
         {team && (
           <div className="mb-3">
-            <Alert variant={team === 'impostor' ? 'danger' : 'success'} className="text-center">
-              <h5 className="mb-0">You are an {team === 'impostor' ? 'impostor' : 'agent'}.</h5>
-            </Alert>
+            <div className={`${team === 'impostor' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'} p-3 rounded-lg border text-center`}>
+              <span className="font-medium">You are an {team === 'impostor' ? 'Impostor' : 'Agent'}.</span>
+            </div>
           </div>
         )}
 
         {showOperationInfo && (
           <div>
-            <h6>Operation: {operation}</h6>
-            {opShortDesc(operation) && <p className="text-muted mb-2">{opShortDesc(operation)}</p>}
-            <div className="operation-details">
-              {/* Relevant operation message (only after acceptance/usage) */}
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-lg font-semibold text-gray-800">Operation: {operation}</h4>
+            </div>
+            {opShortDesc(operation) && <p className="text-gray-500 text-sm mb-3">{opShortDesc(operation)}</p>}
+            <div className="operation-details text-gray-800">
               {opAccepted && operationInfo && operationInfo.revealed?.message && (
-                <p>{operationInfo.revealed.message}</p>
+                <p className="mb-2">{operationInfo.revealed.message}</p>
               )}
               {opAccepted && operationInfo && !operationInfo.revealed?.message && (operationInfo as any).message && (
-                <p>{(operationInfo as any).message}</p>
+                <p className="mb-2">{(operationInfo as any).message}</p>
               )}
 
-              {/* Selected input summary */}
               {operationInfo && (operationInfo as any).targetPlayer && (
-                <p>You selected {(operationInfo as any).targetPlayer}.</p>
+                <p className="text-sm text-gray-600">You selected {(operationInfo as any).targetPlayer}.</p>
               )}
               {operationInfo && (operationInfo as any).targetPlayer1 && (operationInfo as any).targetPlayer2 && (
-                <p>You selected {(operationInfo as any).targetPlayer1} and {(operationInfo as any).targetPlayer2}.</p>
+                <p className="text-sm text-gray-600">You selected {(operationInfo as any).targetPlayer1} and {(operationInfo as any).targetPlayer2}.</p>
               )}
-              {/* Keep panel concise; input guidance stays in OperationPanel */}
             </div>
           </div>
         )}
         {!team && !showOperationInfo && (
-          <p>Waiting for assignment...</p>
+          <p className="text-gray-500 text-sm">Waiting for assignment...</p>
         )}
-      </Card.Body>
-    </Card>
+      </div>
+    </div>
   );
 };
 

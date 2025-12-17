@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
   Button,
-  Form,
   ListGroup,
   Alert,
   Badge,
@@ -20,9 +19,10 @@ import {
 } from "@/types";
 import GameInfo from "./GameInfo";
 import OperationPanel from '@/components/operations/OperationPanel';
+import VotingPanel from '@/components/VotingPanel';
 interface PlayerOperation {
   name: string;
-    details: {
+  info: {
     message?: string;
     success?: boolean;
     availablePlayers?: string[]; // For confession, defector
@@ -45,7 +45,7 @@ interface PlayerOperation {
 }
 
 import { useSocket } from '@/Socket/useSocket';
-import { FiLogOut, FiMessageCircle, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
+import { FiLogOut, FiMessageCircle, FiUsers, FiClock } from "react-icons/fi";
 
 const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const { socket } = useSocket();
@@ -61,8 +61,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     const saved = sessionStorage.getItem('messages');
     return saved ? JSON.parse(saved) as GameMessage[] : [];
   });
-  const [userInput, setUserInput] = useState<string>("");
-  const [voteChoice, setVoteChoice] = useState<string>("");
+  // Voting UI is handled in VotingPanel during VOTING phase
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [currentPhase, setCurrentPhase] = useState<GamePhase>(GamePhase.WAITING);
    const [myOperation, setMyOperation] = useState<PlayerOperation | null>(() => {
@@ -182,7 +181,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       // Avoid adding extra client-side system messages here for consistency
     });
 
-    socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
+    socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['info'] }) => {
       console.log(`Operation details received for ${data.operation}:`, data.info);
       // Preserve used flag if same operation gets updated info
       setMyOperation(prev => {
@@ -192,15 +191,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       // Do NOT log any operation messages here to avoid revealing content before acceptance.
     });
 
-    // Receive structured operation info updates (e.g., danish intelligence reveal)
-    socket.on('operation-info', (data: { operation: string; info: Partial<PlayerOperation['details']>; message?: string }) => {
+    // Receive structured operation info updates; do not echo messages into logs
+    socket.on('operation-info', (data: { operation: string; info: Partial<PlayerOperation['info']>; message?: string }) => {
       setMyOperation(prev => {
         if (!prev || prev.name !== data.operation) return prev;
         return { ...prev, info: { ...prev.info, ...(data.info as any) } } as PlayerOperation;
       });
-      if (data.message) {
-        setMessages(prev => ([...prev, { type: 'system', text: data.message } ]));
-      }
     });
     socket.on("operation-used", (data: { operation?: string; success: boolean; message?: string }) => {
       if (data.success) {
@@ -264,21 +260,34 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       ]);
     });
 
+    // Legacy: some servers may emit 'game-results'; keep handling if present
     socket.on("game-results", (data: GameResultsData) => {
       console.log(`Game results: ${JSON.stringify(data.results)}`);
       setCurrentPhase(GamePhase.COMPLETED);
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `Game has ended. Check results!`,
-        },
-      ]);
-      setGameData((prev: GameState | null) => ({
-        ...(prev || {}),
-        results: data.results,
-        phase: GamePhase.COMPLETED
-      }));
+      setMessages((prev) => ([...prev, { type: 'system', text: `Game has ended. Check results!` }]));
+      setGameData((prev: GameState | null) => ({ ...(prev || {}), results: data.results, phase: GamePhase.COMPLETED }));
+    });
+
+    // New: handle server 'voting-complete' and 'game-end'
+    socket.on("voting-complete", (_roundResult: any) => {
+      setMessages(prev => ([...prev, { type: 'system', text: 'Voting complete. Calculating results…' }]));
+    });
+
+    socket.on("game-end", (finalResults: any) => {
+      // Map server shape to client GameState results array
+      try {
+        const mapped = Array.isArray(finalResults?.players) ? finalResults.players.map((p: any) => ({
+          username: p.username,
+          team: p.team,
+          operation: p.operation,
+          win_status: p.winStatus || p.win_status || (p.team === finalResults.overallWinner ? 'win' : 'lose')
+        })) : [];
+        setCurrentPhase(GamePhase.COMPLETED);
+        setMessages((prev) => ([...prev, { type: 'system', text: `Game has ended. Check results!` }]));
+        setGameData((prev: GameState | null) => ({ ...(prev || {}), results: mapped, phase: GamePhase.COMPLETED }));
+      } catch (e) {
+        console.error('Failed to handle game-end payload', e);
+      }
     });
 
     socket.on("player-joined", (data: PlayerJoinedData) => {
@@ -312,48 +321,19 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("player-voted");
       socket.off("vote-submitted");
       socket.off("game-results");
+      socket.off("voting-complete");
+      socket.off("game-end");
       socket.off("player-joined");
       socket.off("join-success");
       socket.off("error");
     };
   }, [socket, lobbyCode, username]);
 
-  const handleSubmitResponse = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim() || !socket) return;
-
-    // Only allow voting in the voting phase
-    if (currentPhase === GamePhase.VOTING) {
-      socket.emit("submit-vote", {
-        lobbyCode,
-        username,
-        vote: userInput,
-      });
-    } else {
-      // For other interactions that might be phase-specific
-      socket.emit("submit-response", {
-        lobbyCode,
-        username,
-        response: userInput,
-        phase: currentPhase
-      });
-    }
-
-    setUserInput("");
-  };
+  // General text input submission is not used during voting
 
   // Confession/Defector handling moved to OperationPanel and renderers
 
-  const handleVote = (targetPlayer: string) => {
-    if (!socket || currentPhase !== GamePhase.VOTING) return;
-    
-    socket.emit("submit-vote", {
-      lobbyCode,
-      username,
-      vote: targetPlayer,
-    });
-    setVoteChoice("");
-  };
+  // Voting handled by VotingPanel
 
   const handleLeaveGame = () => {
     if (!socket) return;
@@ -405,27 +385,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           <div>
             <h4>Voting Phase</h4>
             <p>Vote for a player you suspect is an impostor:</p>
-            <Form onSubmit={(e) => { e.preventDefault(); if (voteChoice) handleVote(voteChoice); }} className="mb-3">
-              <Form.Group>
-                <Form.Label>Select player to vote for</Form.Label>
-                <Form.Select value={voteChoice} onChange={(e) => setVoteChoice(e.target.value)}>
-                  <option value="">Select a player</option>
-                  {players.filter(p => p.username !== username).map(p => (
-                    <option key={p.username} value={p.username}>{p.username}</option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-              <div className="mt-2">
-                <Button type="submit" variant="primary" disabled={!voteChoice}>Submit Vote</Button>
-              </div>
-            </Form>
-            <ListGroup>
-              {players.map((player) => (
-                <ListGroup.Item key={player.username} className={player.username === currentTurnPlayer ? 'bg-yellow-50' : ''}>
-                  {player.username} {player.username === username && "(You)"} {player.isCurrentTurn && <Badge bg="warning" pill className="text-dark ms-2">Current Turn</Badge>}
-                </ListGroup.Item>
-              ))}
-            </ListGroup>
+            {/* Reusable voting panel */}
+            <VotingPanel players={players} currentUsername={username} lobbyCode={lobbyCode} />
           </div>
         );
         

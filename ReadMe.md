@@ -90,6 +90,10 @@ The repository implements a variety of operations which can be assigned to playe
   - what the player needs to do: no input from the player
   - what the player sees: name of one player
 
+- `defector` - The player chooses another player and joins their team
+
+  - what the player needs to do: select one player
+  - what the player sees: no additional info, the player has to guess what team he is on now
 
 Note: Each operation may have a `modifyWinCondition` hook that runs after votes are tallied. Hooks receive the computed `roundResult` (which contains the logically eliminated players) and should use that in-memory information to adjust `win_status` or teams. For backward compatibility some hooks may fall back to DB flags if present, but current single-round mode prefers the `roundResult` and does not persist eliminations between games. Operations are intentionally applied server-side to avoid client tampering.
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ListGroup, Button, Alert, Badge } from 'react-bootstrap';
 import { useSocket } from '@/Socket/useSocket';
 import { Player } from '@/types';
@@ -7,28 +7,35 @@ interface VotingPanelProps {
   players: Player[];
   currentUsername: string;
   lobbyCode: string;
-  onVoteSubmitted: (target: string) => void;
-  votedPlayers: Set<string>;
 }
 
 const VotingPanel: React.FC<VotingPanelProps> = ({
   players,
   currentUsername,
   lobbyCode,
-  onVoteSubmitted,
-  votedPlayers
+  
 }) => {
   const { socket } = useSocket();
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
 
   // Listen for vote confirmation
   useEffect(() => {
     if (!socket) return;
 
-    const handleVoteSubmitted = () => {
+    const handleVoteSubmitted = (data: { username?: string; vote?: string }) => {
       setHasVoted(true);
+      if (data?.username) {
+        setVotedPlayers(prev => new Set(prev).add(data.username as string));
+      }
+    };
+
+    const handlePlayerVoted = (data: { username: string }) => {
+      if (data?.username) {
+        setVotedPlayers(prev => new Set(prev).add(data.username));
+      }
     };
 
     const handleGameError = (data: { message: string }) => {
@@ -38,10 +45,12 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
     };
 
     socket.on('vote-submitted', handleVoteSubmitted);
+    socket.on('player-voted', handlePlayerVoted);
     socket.on('game-error', handleGameError);
 
     return () => {
       socket.off('vote-submitted', handleVoteSubmitted);
+      socket.off('player-voted', handlePlayerVoted);
       socket.off('game-error', handleGameError);
     };
   }, [socket]);
@@ -54,12 +63,17 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
       username: currentUsername,
       vote: selectedPlayer
     });
-
-    onVoteSubmitted(selectedPlayer);
   };
 
   // Filter out eliminated players (would come from the game state)
   const activePlayers = players.filter(player => !player.eliminated);
+
+  const progress = useMemo(() => {
+    const activeCount = activePlayers.length || 1;
+    const votedCount = votedPlayers.size;
+    const pct = Math.round((votedCount / activeCount) * 100);
+    return { votedCount, activeCount, pct };
+  }, [activePlayers.length, votedPlayers]);
 
   return (
     <div className="voting-panel">
@@ -111,15 +125,15 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
       <div className="mt-4">
         <h5>Voting Progress</h5>
         <div className="d-flex justify-content-between">
-          <span>{votedPlayers.size} of {activePlayers.length} players have voted</span>
-          <span>{Math.round((votedPlayers.size / activePlayers.length) * 100)}%</span>
+          <span>{progress.votedCount} of {progress.activeCount} players have voted</span>
+          <span>{progress.pct}%</span>
         </div>
         <div className="progress">
           <div
             className="progress-bar"
             role="progressbar"
-            style={{ width: `${(votedPlayers.size / activePlayers.length) * 100}%` }}
-            aria-valuenow={(votedPlayers.size / activePlayers.length) * 100}
+            style={{ width: `${progress.pct}%` }}
+            aria-valuenow={progress.pct}
             aria-valuemin={0}
             aria-valuemax={100}
           />

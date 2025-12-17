@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-bootstrap';
 import type { OperationRendererProps } from '@/types';
 import { getOperationEntry } from './operationRegistry';
 import NoInputRenderer from './renderers/NoInputRenderer';
@@ -42,8 +41,11 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
   const isAllowed = !operation.used && !submitting && (isMyTurn === undefined || isMyTurn === true);
 
   return (
-    <div>
-      <Alert variant="info" className="mb-0">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-indigo-50 p-3 border-b border-indigo-100">
+        <h4 className="text-base font-semibold text-gray-800 m-0">Operation</h4>
+      </div>
+      <div className="p-4">
         <Renderer
           operation={operation}
           lobbyCode={lobbyCode}
@@ -53,9 +55,9 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
           disabled={!isAllowed}
         />
         {!isAllowed && isMyTurn === false && (
-          <div className="text-sm text-muted mt-2">It's not your turn — wait for the current player to act.</div>
+          <div className="text-sm text-gray-500 mt-2">It's not your turn — wait for the current player to act.</div>
         )}
-      </Alert>
+      </div>
     </div>
   );
 };
