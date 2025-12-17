@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { getDB } from './db/db';
 import { GamePhase } from './game-logic/types';
-import { GAME_CONFIG } from './game-logic/config';
+import { GAME_CONFIG, OPERATION_CONFIG } from './game-logic/config';
 import * as gameService from './game-logic/gameService';
 import * as lobbyService from './lobby-manager/lobbyService';
 import * as connectionManager from './connectionManager';
@@ -16,6 +16,16 @@ import {
 
 let io: Server | null = null;
 const playerOperationsByLobby: { [lobbyId: string]: any[] } = {};
+// In-memory turn state per lobby. Persisting in DB is optional and can be added later.
+const turnStateByLobby: { [lobbyId: string]: { order: string[]; turnIndex: number } } = {};
+
+function advanceTurn(lobbyId: string) {
+  const state = turnStateByLobby[lobbyId];
+  if (!state || !state.order || state.order.length === 0) return;
+  state.turnIndex = (state.turnIndex + 1) % state.order.length;
+  const next = state.order[state.turnIndex];
+  io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: next, turnIndex: state.turnIndex });
+}
 
 export function getIO() {
   return io;
@@ -94,7 +104,16 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('operation-assigned', { operation: player.operation });
           if (player.operation_info) {
             try {
-              const operationInfo = JSON.parse(player.operation_info);
+              let operationInfo = JSON.parse(player.operation_info);
+              // For client-choice operations, remove any pre-filled targets and revelations before sending to client
+              // but preserve availablePlayers for the UI
+              if (player.operation === 'danish intelligence' || player.operation === 'confession' || player.operation === 'defector') {
+                // These operations require client input, so remove any server-pre-filled data
+                delete operationInfo.targetPlayer;
+                delete operationInfo.targetPlayer1;
+                delete operationInfo.targetPlayer2;
+                delete operationInfo.revealed;
+              }
               socket.emit('operation-prepared', { operation: player.operation, info: operationInfo });
             } catch (parseError) {
               console.error(`Error parsing operation_info for ${username}:`, parseError);
@@ -103,6 +122,16 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         socket.emit('phase-change', { phase: lobby.phase, message: `Current phase: ${lobby.phase}` });
+
+        // If we have in-memory turn state for this lobby, inform the reconnecting client
+        try {
+          const state = turnStateByLobby[lobby.id];
+          if (state) {
+            socket.emit('turn-start', { currentTurnPlayer: state.order[state.turnIndex], turnIndex: state.turnIndex });
+          }
+        } catch (err) {
+          /* ignore */
+        }
 
         io?.to(lobby.id).emit('game-message', { type: 'system', text: `${username} has reconnected` });
 
@@ -220,8 +249,20 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const assignResult = await gameService.assignTeamsAndOperations(lobbyId, playersInLobby.map((p: any) => p.username), io as Server, connectionManager.getSocketId);
         const playerOperations = assignResult.playerOperations;
         playerOperationsByLobby[lobbyId] = playerOperations;
+        // Initialize turn order (username-based) and notify clients
+        try {
+          const order = playersInLobby.map((p: any) => p.username);
+          if (order.length > 0) {
+            turnStateByLobby[lobbyId] = { order, turnIndex: 0 };
+            io?.to(lobbyId).emit('turn-start', { currentTurnPlayer: order[0], turnIndex: 0 });
+          }
+        } catch (err) {
+          console.error('Failed to initialize turn order:', err);
+        }
 
         await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.OPERATION_ASSIGNMENT, lobbyId]);
+        io?.to(lobbyId).emit('phase-change', { phase: GamePhase.OPERATION_ASSIGNMENT, message: 'Operation assignment phase has begun.' });
+        console.log(`Lobby ${lobbyCode} (id: ${lobbyId}) moved to OPERATION_ASSIGNMENT phase`);
 
         for (const opItem of playerOperations) {
           const player = opItem.player;
@@ -246,43 +287,137 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
       }
     });
 
-    socket.on('accept-assignment', async ({ lobbyId, username }) => {
+    socket.on('accept-assignment', async ({ lobbyCode, username }) => {
       try {
         const db = getDB();
-        await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, username]);
+        const lobby = await lobbyService.getLobby(lobbyCode);
+        if (!lobby || !lobby.id) {
+          socket.emit('error', { message: 'Lobby not found' });
+          return;
+        }
+        const lobbyId = lobby.id;
 
-        const playerOps = playerOperationsByLobby[lobbyId] || [];
-        for (const opItem of playerOps) {
-          const nextPlayer = opItem.player;
-          const operationMeta = opItem.operation;
-          const row = await db.get('SELECT operation_assigned, operation_accepted FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
-          if (!row) continue;
-          if (row.operation_assigned) continue;
+        console.log(`Received accept-assignment from ${username} for lobby ${lobbyCode} (id: ${lobbyId})`);
+        io?.to(lobbyId).emit('game-message', { type: 'system', text: `${username} accepted their assignment.` });
 
-          const playerSocketId = connectionManager.getSocketId(nextPlayer);
+        // Ensure player has submitted any required operation inputs before accepting
+        const playerRow = await db.get('SELECT operation, operation_info FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, username]);
+        const playerOpName = playerRow?.operation;
+        const playerOpInfoRaw = playerRow?.operation_info;
 
-          io?.to(lobbyId).emit('operation-assigned-public', { player: nextPlayer, operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name });
-
-          if (playerSocketId) {
-            io?.to(playerSocketId).emit('operation-assigned', { operation: operationMeta?.name });
-            await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
-            return;
-          } else {
-            await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
-            continue;
+        // If operation has required fields, validate that operation_info contains them
+        if (playerOpName) {
+          try {
+            const opConfig = OPERATION_CONFIG[playerOpName];
+            const requiredFields: string[] = opConfig?.fields || [];
+            if (requiredFields.length > 0) {
+              let opInfo = {};
+              if (playerOpInfoRaw) {
+                try { opInfo = JSON.parse(playerOpInfoRaw); } catch (e) { opInfo = {}; }
+              }
+              const missing = requiredFields.filter(f => !(f in opInfo));
+              if (missing.length > 0) {
+                socket.emit('game-error', { message: `Cannot accept assignment: required operation inputs missing: ${missing.join(', ')}` });
+                return;
+              }
+            }
+          } catch (e) {
+            // If we cannot validate op config for any reason, allow accept to avoid blocking players
+            console.warn('Could not validate operation fields for', playerOpName, e);
           }
         }
 
-        await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-        io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+        await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, username]);
+
+        // Use turn order to find the next unassigned player (starting after current player)
+        const turnState = turnStateByLobby[lobbyId];
+        if (!turnState) {
+          console.error('No turn state for lobby', lobbyId);
+          return;
+        }
+
+        // Find current player's index in turn order
+        const currentIdx = turnState.order.indexOf(username);
+        if (currentIdx === -1) {
+          console.error(`Player ${username} not found in turn order for lobby ${lobbyId}`);
+          return;
+        }
+
+        // Look for next unassigned player in order
+        let nextPlayer: string | null = null;
+        for (let i = currentIdx + 1; i < turnState.order.length; i++) {
+          const candidate = turnState.order[i];
+          const candidateRow = await db.get('SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+          if (candidateRow && !candidateRow.operation_assigned) {
+            nextPlayer = candidate;
+            break;
+          }
+        }
+
+        if (nextPlayer) {
+          // Find the operation for this player from playerOperationsByLobby
+          const playerOps = playerOperationsByLobby[lobbyId] || [];
+          const nextOpMeta = playerOps.find(op => op.player === nextPlayer)?.operation;
+
+          const playerSocketId = connectionManager.getSocketId(nextPlayer);
+
+          console.log(`Assigning operation '${nextOpMeta?.name}' to player ${nextPlayer} in lobby ${lobbyCode}`);
+          io?.to(lobbyId).emit('operation-assigned-public', { player: nextPlayer, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+
+          if (playerSocketId) {
+            io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
+            await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
+            console.log(`Sent operation-assigned to ${nextPlayer} (socket ${playerSocketId})`);
+            // Advance turn to this newly-assigned player
+            advanceTurn(lobbyId);
+          } else {
+            await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
+            console.log(`Auto-accepted assignment for offline player ${nextPlayer} in lobby ${lobbyCode}`);
+            // Continue to check for more players after this one
+          }
+        } else {
+          // No more unassigned players -> move to voting
+          await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+          io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+          console.log(`All assignments complete for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+        }
       } catch (err) {
         console.error('Error in accept-assignment:', err);
       }
     });
 
-    socket.on('use-confession', async ({ targetPlayer, lobbyId }) => {
+    socket.on('use-confession', async (data: any) => {
       try {
+        // Accept both legacy shape ({ targetPlayer, lobbyId }) and generic shape
+        // from OperationPanel ({ lobbyCode, operation, payload: { targetPlayer } })
+        const rawTarget: string | undefined = data?.targetPlayer ?? data?.payload?.targetPlayer;
+        const lobbyCode: string | undefined = data?.lobbyCode;
+        let lobbyId: string | undefined = data?.lobbyId;
+
+        if (!lobbyId && lobbyCode) {
+          const lobby = await lobbyService.getLobby(lobbyCode);
+          lobbyId = lobby?.id;
+        }
+
+        const targetPlayer = rawTarget as string | undefined;
+        if (!lobbyId) {
+          socket.emit('error', { message: 'Lobby not found for confession' });
+          return;
+        }
+        if (!targetPlayer) {
+          socket.emit('error', { message: 'Invalid confession target' });
+          return;
+        }
+
         const db = getDB();
+        // Ensure it's the emitter's turn
+        const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
+        const turnState = turnStateByLobby[lobbyId];
+        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
+          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          return;
+        }
         if (!validateVoteData(socket.handshake.auth?.username || '', targetPlayer)) {
           socket.emit('error', { message: 'Invalid confession target' });
           return;
@@ -320,15 +455,46 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         socket.emit('operation-used', { success: true });
+        socket.emit('game-message', { type: 'system', text: `${confessor.username} used ${'confession'}` });
+        // Advance turn after successful operation
+        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
       } catch (error) {
         console.error('Error processing confession:', error);
         socket.emit('error', { message: 'Failed to process confession' });
       }
     });
 
-    socket.on('use-defector', async ({ targetPlayer, lobbyId }) => {
+    socket.on('use-defector', async (data: any) => {
       try {
+        // Accept both legacy shape ({ targetPlayer, lobbyId }) and generic shape
+        // from OperationPanel ({ lobbyCode, operation, payload: { targetPlayer } })
+        const rawTarget: string | undefined = data?.targetPlayer ?? data?.payload?.targetPlayer;
+        const lobbyCode: string | undefined = data?.lobbyCode;
+        let lobbyId: string | undefined = data?.lobbyId;
+
+        if (!lobbyId && lobbyCode) {
+          const lobby = await lobbyService.getLobby(lobbyCode);
+          lobbyId = lobby?.id;
+        }
+
+        const targetPlayer = rawTarget as string | undefined;
+        if (!lobbyId) {
+          socket.emit('error', { message: 'Lobby not found for defector' });
+          return;
+        }
+        if (!targetPlayer) {
+          socket.emit('error', { message: 'No target selected for defector' });
+          return;
+        }
         const db = getDB();
+        // Ensure it's the emitter's turn
+        const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
+        const turnState = turnStateByLobby[lobbyId];
+        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
+          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          return;
+        }
         if (!validateVoteData(socket.handshake.auth?.username || '', targetPlayer)) {
           socket.emit('error', { message: 'Invalid defector target' });
           return;
@@ -356,9 +522,49 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         );
 
         socket.emit('operation-used', { success: true, message: `You've chosen ${targetPlayer} as your target. Their team will be switched during the next phase.` });
+        socket.emit('game-message', { type: 'system', text: `${defector.username} used ${'defector'}` });
+        // Advance turn after successful operation
+        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
       } catch (error) {
         console.error('Error processing defector operation:', error);
         socket.emit('error', { message: 'Failed to process defector operation' });
+      }
+    });
+
+    // Generic operation handler for operations that use eventName 'operation-used'
+    socket.on('operation-used', async ({ lobbyCode, operation, payload }) => {
+      try {
+        const db = getDB();
+        const lobby = await lobbyService.getLobby(lobbyCode);
+        if (!lobby || !lobby.id) {
+          socket.emit('error', { message: 'Lobby not found for operation' });
+          return;
+        }
+        const lobbyId = lobby.id;
+
+        const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
+        const turnState = turnStateByLobby[lobbyId];
+        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
+          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          return;
+        }
+
+        // Sanitize and persist operation info to the player's row
+        const sanitized = sanitizeOperation({ operation, payload });
+        await db.run(
+          "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
+          [JSON.stringify(sanitized), lobbyId, emitter]
+        );
+
+        socket.emit('operation-used', { success: true, message: 'Operation submitted.' });
+        io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} used operation ${operation}` });
+
+        // Advance turn after operation
+        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+      } catch (err) {
+        console.error('Error handling generic operation-used:', err);
+        socket.emit('error', { message: 'Failed to process operation' });
       }
     });
 

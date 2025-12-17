@@ -49,16 +49,47 @@ Triple is an online multiplayer social-deduction game where players are secretly
 The repository implements a variety of operations which can be assigned to players. Operations are defined in `server/src/game-logic/config.ts` under `OPERATION_CONFIG` and referenced in `GAME_CONFIG.OPERATIONS`. Notable operations and their implemented effects:
 
 - `grudge` – Server selects a target for the player; if that target is among the logically eliminated players (i.e., voted out in the round), the grudge-holder is marked as `win` (their `win_status` is updated). The operation uses the computed round result rather than persisted elimination flags.
+
+  - what the player needs to do: no input from the player
+  - what the player sees: name of one player
+
 - `infatuation` – A player becomes tied to a target player: after the round, the infatuated player's win status is set to match their target's win status.
+
+  - what the player needs to do: no input from the player
+  - what the player sees: name of one player
+
 - `sleeper agent` – Appears to be on one team but is actually on the opposite team; `modifyWinCondition` flips the player's team on processing (and is marked to avoid double application).
+
+  - what the player needs to do: no input from the player
+  - what the player sees: no additional info needed
+
 - `anonymous tip` – Server reveals a player's name and team field in the player's `operation_info` (no direct win-condition change).
+
+  - what the player needs to do: no input from the player
+  - what the player sees: name + actual team of the player
+
 - `danish intelligence` – Server reveals one impostor and one agent (or fails if not enough players), and marks intel as revealed in the player's `operation_info`.
-- `confession` – Player chooses another player to reveal their team to (operation implementation prepares available players; processing is no-op in modifyWinCondition stub).
+
+  - what the player needs to do: select two different player (not himself)
+  - what the player sees: if either 1. one ore more players or 2. no players are impostors
+
+
+- `confession` – Player chooses another player to reveal their team to.
+
+  - what the player needs to do: select one player (not himself)
+  - what the player sees: no additional info needed
+  - what the target player sees: name of the player and their team
+
 - `old photographs` – Server picks two same-team players and reveals they are on the same team (team identity not revealed), marks operation info as revealed.
-- `defector` – Allows selecting a target player to flip to the opposite team; server updates the target's `team` when processed.
+
+  - what the player needs to do: no input from the player
+  - what the player sees: names of two players
+
 - `scapegoat` – The player with this operation wins only if they are voted out (determined from the round's vote tally). The operation uses the in-memory round result to set `win_status` rather than relying on a persisted `eliminated` flag.
-- `secret intel` – Choose two players to investigate; server reveals results depending on their teams and stores it in `operation_info`.
-- `secret tip` – Server picks a random player and reveals their association (no win-condition change).
+
+  - what the player needs to do: no input from the player
+  - what the player sees: name of one player
+
 
 Note: Each operation may have a `modifyWinCondition` hook that runs after votes are tallied. Hooks receive the computed `roundResult` (which contains the logically eliminated players) and should use that in-memory information to adjust `win_status` or teams. For backward compatibility some hooks may fall back to DB flags if present, but current single-round mode prefers the `roundResult` and does not persist eliminations between games. Operations are intentionally applied server-side to avoid client tampering.
 

@@ -41,6 +41,7 @@ export const mockSocket: {
   }),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  connected: true,
   id: 'mock-socket-id-from-setup',
 };
 
@@ -103,6 +104,14 @@ export const mockSocketContextDefaultValue = {
   setGameState: vi.fn(),
   error: null,
   setError: vi.fn(),
+  connect: vi.fn(() => {
+    mockSocket.connect();
+    mockSocket.connected = true;
+  }),
+  disconnect: vi.fn(() => {
+    mockSocket.disconnect();
+    mockSocket.connected = false;
+  }),
   // If your actual context exposes emit, on, off directly (not just via socket.emit),
   // you can add them here:
   // emit: mockSocket.emit,

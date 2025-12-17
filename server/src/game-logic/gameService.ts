@@ -146,35 +146,50 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
         FROM players 
         WHERE lobby_id = ? AND operation IS NOT NULL
     `, [lobbyId]);
+    // Two-phase processing: first apply priority operations that may change teams or
+    // explicitly set per-player win_status (so dependent ops can observe the final state),
+    // then apply the remaining operations which may rely on the above changes.
+    const priorityOps = new Set(['sleeper agent', 'defector', 'scapegoat', 'grudge']);
 
-    for (const player of playersWithOps) {
-        const operationDetails = OPERATION_CONFIG[player.operation];
-        if (!operationDetails?.modifyWinCondition) continue;
+    const getTeamsMap = async () => {
+        const allPlayersInLobby = await db.all(`
+            SELECT username, team 
+            FROM players 
+            WHERE lobby_id = ?
+        `, [lobbyId]);
+        return {
+            list: allPlayersInLobby.map((p: any) => p.username),
+            map: allPlayersInLobby.reduce((acc: Record<string, string>, p: any) => { acc[p.username] = p.team; return acc; }, {})
+        } as { list: string[]; map: Record<string, string> };
+    };
 
-        try {
-            const allPlayersInLobby = await db.all(`
-                SELECT username, team 
-                FROM players 
-                WHERE lobby_id = ?
-            `, [lobbyId]);
-
-            const teamsMap = allPlayersInLobby.reduce((acc, p) => {
-                acc[p.username] = p.team;
-                return acc;
-            }, {} as Record<string, string>);
-
-            await operationDetails.modifyWinCondition(
-                lobbyId,
-                allPlayersInLobby.map(p => p.username),
-                roundResult.votes,
-                teamsMap,
-                db,
-                roundResult // Pass the whole roundResult
-            );
-        } catch (error) {
-            console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
+    const runFor = async (subset: Array<any>) => {
+        for (const player of subset) {
+            const operationDetails = OPERATION_CONFIG[player.operation];
+            if (!operationDetails?.modifyWinCondition) continue;
+            try {
+                const teamsData = await getTeamsMap();
+                await operationDetails.modifyWinCondition(
+                    lobbyId,
+                    teamsData.list,
+                    roundResult.votes,
+                    teamsData.map,
+                    db,
+                    roundResult
+                );
+            } catch (error) {
+                console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
+            }
         }
-    }
+    };
+
+    // Phase 1: priority operations
+    const phase1 = playersWithOps.filter((p: any) => priorityOps.has(p.operation));
+    await runFor(phase1);
+
+    // Phase 2: remaining operations
+    const phase2 = playersWithOps.filter((p: any) => !priorityOps.has(p.operation));
+    await runFor(phase2);
 }
 
 export async function calculateRoundResults(lobbyId: string): Promise<RoundResult> {

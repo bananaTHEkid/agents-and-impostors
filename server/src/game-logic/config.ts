@@ -126,7 +126,10 @@ export const OPERATION_CONFIG: Record<
                 success: true
             };
         },
-        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+        modifyWinCondition: async (lobbyId, players, votes, teams, db, roundResult) => {
+            // Prefer the provided roundResult to determine outcomes when possible.
+            // However, if a target player's win_status was explicitly set by
+            // earlier priority operations (e.g. scapegoat, grudge), honor that DB value.
             const infatuatedPlayers = await db.all(
                 "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'infatuation'",
                 [lobbyId]
@@ -136,14 +139,36 @@ export const OPERATION_CONFIG: Record<
                 try {
                     const info = JSON.parse(player.operation_info);
                     if (!info.success || !info.infatuationTarget) continue;
-                    const targetPlayer = await db.get(
-                        "SELECT win_status FROM players WHERE lobby_id = ? AND username = ?",
-                        [lobbyId, info.infatuationTarget]
+                    const target = info.infatuationTarget;
+
+                    // Check if the target has an explicit win_status set in DB (priority ops may have set this)
+                    const targetRow: any = await db.get(
+                        "SELECT win_status, team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, target]
                     );
-                    if (!targetPlayer) continue;
+
+                    let targetWinStatus: 'win' | 'lose' = 'lose';
+
+                    if (targetRow && targetRow.win_status) {
+                        // Honor explicit DB win_status when present
+                        targetWinStatus = targetRow.win_status;
+                    } else if (roundResult) {
+                        // Derive target's win status from the roundResult winner and their team
+                        // If target's team matches the roundResult winner, they are considered a winner
+                        const targetTeam = (targetRow && targetRow.team) ? targetRow.team : teams[target];
+                        if (targetTeam && roundResult.winner === targetTeam) {
+                            targetWinStatus = 'win';
+                        } else {
+                            targetWinStatus = 'lose';
+                        }
+                    } else {
+                        // Fallback: if neither DB nor roundResult available, default to 'lose'
+                        targetWinStatus = 'lose';
+                    }
+
                     await db.run(
                         "UPDATE players SET win_status = ? WHERE lobby_id = ? AND username = ?",
-                        [targetPlayer.win_status, lobbyId, player.username]
+                        [targetWinStatus, lobbyId, player.username]
                     );
                 } catch (error) {
                     console.error(`Error processing infatuation for player ${player.username}:`, error);
@@ -198,13 +223,13 @@ export const OPERATION_CONFIG: Record<
         },
     },
     "anonymous tip": {
-        fields: ["message"],
-        types: ["string"],
+        fields: [],
+        types: [],
         generateInfo: (players, teams, self) => {
             const otherPlayers = players.filter(p => p !== self);
             if (otherPlayers.length === 0) return null;
             const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
-            return { revealedPlayer: randomPlayer, team: teams[randomPlayer] };
+            return { revealedPlayer: randomPlayer, team: teams[randomPlayer], message: `You received an anonymous tip: ${randomPlayer} is a ${teams[randomPlayer] === 'impostor' ? 'impostor' : 'agent'}.` };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
             try {
@@ -238,21 +263,10 @@ export const OPERATION_CONFIG: Record<
         types: [],
         generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
             const otherPlayers = players.filter(p => p !== self);
-            const impostors = otherPlayers.filter(p => teams[p] === "impostor");
-            const agents = otherPlayers.filter(p => teams[p] === "agent");
-            if (impostors.length === 0 || agents.length === 0) {
-                return {
-                    success: false,
-                    message: "Not enough players to generate intelligence information."
-                };
-            }
-            const revealedImpostor = impostors[Math.floor(Math.random() * impostors.length)];
-            const revealedAgent = agents[Math.floor(Math.random() * agents.length)];
             return {
                 success: true,
-                revealedImpostor,
-                revealedAgent,
-                message: `Your intelligence reveals that ${revealedImpostor} is an impostor and ${revealedAgent} is an agent.`
+                message: "Choose two players to investigate with your danish intelligence.",
+                availablePlayers: otherPlayers
             };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
@@ -265,14 +279,44 @@ export const OPERATION_CONFIG: Record<
                     if (!player.operation_info) continue;
                     try {
                         const info = JSON.parse(player.operation_info);
-                        // Mark intel as revealed/processed to avoid re-processing
-                        if (!info.revealed) {
-                            info.revealed = true;
-                            await db.run(
-                                "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
-                                [JSON.stringify(info), lobbyId, player.username]
-                            );
+                        if (!info.targetPlayer1 || !info.targetPlayer2) continue;
+
+                        const target1 = await db.get(
+                            "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                            [lobbyId, info.targetPlayer1]
+                        );
+                        const target2 = await db.get(
+                            "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                            [lobbyId, info.targetPlayer2]
+                        );
+
+                        if (!target1 || !target2) continue;
+
+                        // Determine revelation: reveal all if one or both are impostors, or if both are agents
+                        const oneOrBothImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                        const bothAgents = target1.team === 'agent' && target2.team === 'agent';
+                        const shouldReveal = oneOrBothImpostors || bothAgents;
+
+                        if (shouldReveal) {
+                            info.revealed = {
+                                target1Name: info.targetPlayer1,
+                                target1Team: target1.team,
+                                target2Name: info.targetPlayer2,
+                                target2Team: target2.team,
+                                message: oneOrBothImpostors
+                                    ? "At least one of your targets is an impostor!"
+                                    : "Both of your targets are agents!"
+                            };
+                        } else {
+                            info.revealed = {
+                                message: "One is an impostor and one is an agent (no revelation)"
+                            };
                         }
+
+                        await db.run(
+                            "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
+                            [JSON.stringify(info), lobbyId, player.username]
+                        );
                     } catch (err) {
                         console.error(`Error processing danish intelligence for player ${player.username}:`, err);
                     }
@@ -283,8 +327,8 @@ export const OPERATION_CONFIG: Record<
         }
     },
     "confession": {
-        fields: ["targetPlayer"],
-        types: ["string"],
+        fields: [],
+        types: [],
         generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
             const possibleTargets = players.filter(p => p !== self);
             return {
@@ -358,8 +402,8 @@ export const OPERATION_CONFIG: Record<
         }
     },
     "defector": {
-        fields: ["targetPlayer"],
-        types: ["string"],
+        fields: [],
+        types: [],
         generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
             const possibleTargets = players.filter(p => p !== self);
             return {
@@ -440,16 +484,24 @@ export const OPERATION_CONFIG: Record<
             }
         }
     },
-    // SECRET INTEL: Choose 2 names. If one or both are virus agents, revealed. If both are service agents, revealed.
+    // SECRET INTEL: Server chooses 2 names. If one or both are impostors, revealed. If both are agents, revealed.
     "secret intel": {
-        fields: ["targetPlayer1", "targetPlayer2"],
-        types: ["string", "string"],
+        fields: [],
+        types: [],
         generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
             const otherPlayers = players.filter(p => p !== self);
+            if (otherPlayers.length < 2) {
+                return {
+                    success: false,
+                    message: "Not enough players for secret intel."
+                };
+            }
+            const picked = otherPlayers.slice(0, 2);
             return {
                 success: true,
-                message: "Choose two players to investigate with your secret intel.",
-                availablePlayers: otherPlayers
+                message: "Your secret intel will reveal information about two players.",
+                targetPlayer1: picked[0],
+                targetPlayer2: picked[1]
             };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {

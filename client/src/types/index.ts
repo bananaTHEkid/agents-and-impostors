@@ -12,6 +12,7 @@ export interface Player {
   operation?: string;
   eliminated?: boolean;
   isHost?: boolean;
+  isCurrentTurn?: boolean;
 }
 
 export interface RoundResult {
@@ -59,6 +60,9 @@ export interface GameState {
   totalRounds?: number;
   submittedPlayers?: string[];
   votedPlayers?: string[];
+  // Turn-based fields
+  currentTurnPlayer?: string; // username of the player whose turn it currently is
+  turnIndex?: number;
   results?: Array<{
     username: string;
     team: string;
@@ -162,6 +166,21 @@ export interface Operation {
   used?: boolean;
 }
 
+/**
+ * Properties supplied to a component that renders a game operation UI.
+ *
+ * Provides the operation data, context about the current player and lobby, and
+ * optional helpers for real-time communication and submitting operation results.
+ *
+ * @property operation - The operation object to render, or null when no operation is active.
+ * @property lobbyCode - The identifier for the lobby/session this operation belongs to.
+ * @property username - The current player's username (used for attributing actions and displaying identity).
+ * @property socket - Optional socket/connection instance for emitting or listening to real-time events.
+ * @property onSubmit - Optional callback invoked when the user submits the operation. Receives a payload map of field values.
+ * @property disabled - When true, the UI should prevent input and submission (read-only or inactive state).
+ * @property isMyTurn - Whether it is the current client's turn; used to enable or gate interactive inputs.
+ * @property myTeam - The client's team, either 'agent' or 'impostor', used to adjust displayed information and available actions.
+ */
 export interface OperationRendererProps {
   operation: Operation | null;
   lobbyCode: string;
@@ -169,4 +188,8 @@ export interface OperationRendererProps {
   socket?: any;
   onSubmit?: (payload: Record<string, any>) => void;
   disabled?: boolean;
+  // Whether it's this client's turn (used by OperationPanel to gate inputs)
+  isMyTurn?: boolean;
+  // The player's own team (to display in operation UI)
+  myTeam?: 'agent' | 'impostor';
 }

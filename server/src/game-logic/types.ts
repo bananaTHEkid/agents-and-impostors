@@ -43,4 +43,7 @@ export interface Lobby {
     phase: GamePhase;
     current_round?: number; // Added current_round, optional as it might not exist for new lobbies
     total_rounds?: number; // Added total_rounds, optional
+    // Turn-based tracking (optional)
+    current_turn_player?: string; // username
+    turn_index?: number;
 }
