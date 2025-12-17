@@ -141,15 +141,51 @@ export async function startNewRound(lobbyId: string, roundNumber: number, lobbie
 
 export async function processSpecialOperations(lobbyId: string, roundResult: RoundResult) {
     const db = getDB();
+    // Determine player count to cap how many win-condition-modifying operations run this round
+    const playerCountRow = await db.get(`SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ?`, [lobbyId]);
+    const playerCount = playerCountRow?.cnt ?? 0;
+    // Caps:
+    // - <= 6 players: 1 operation
+    // - <= 9 players: 2 operations
+    // - >= 10 players: 3 operations
+    const allowedOpsThisRound = playerCount <= 6 ? 1 : (playerCount <= 9 ? 2 : 3);
+
+    // Pull players with operations in a deterministic order
     const playersWithOps = await db.all(`
         SELECT username, operation, operation_info 
         FROM players 
         WHERE lobby_id = ? AND operation IS NOT NULL
+        ORDER BY username ASC
     `, [lobbyId]);
-    // Two-phase processing: first apply priority operations that may change teams or
-    // explicitly set per-player win_status (so dependent ops can observe the final state),
-    // then apply the remaining operations which may rely on the above changes.
-    const priorityOps = new Set(['sleeper agent', 'defector', 'scapegoat', 'grudge']);
+
+    // Only these operations are allowed to modify win conditions this round
+    const winConditionOps = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector']);
+    // Prioritize a subset that strongly affects outcomes
+    const priorityOps = new Set(['sleeper agent', 'sleeper', 'defector', 'scapegoat', 'grudge']);
+
+    // Filter to only those that actually implement modifyWinCondition
+    const hasModifier = (opName: string) => {
+        const op = OPERATION_CONFIG[opName];
+        return !!op?.modifyWinCondition;
+    };
+
+    // Consider only the specified win-condition operations
+    const eligible = playersWithOps.filter((p: any) => winConditionOps.has(p.operation) && hasModifier(p.operation));
+    const priorityCandidates = eligible.filter((p: any) => priorityOps.has(p.operation));
+    const otherCandidates = eligible.filter((p: any) => !priorityOps.has(p.operation));
+
+    // Select up to allowedOpsThisRound, taking from priority first, then others
+    const selected: Array<any> = [];
+    for (const p of priorityCandidates) {
+        if (selected.length >= allowedOpsThisRound) break;
+        selected.push(p);
+    }
+    if (selected.length < allowedOpsThisRound) {
+        for (const p of otherCandidates) {
+            if (selected.length >= allowedOpsThisRound) break;
+            selected.push(p);
+        }
+    }
 
     const getTeamsMap = async () => {
         const allPlayersInLobby = await db.all(`
@@ -163,33 +199,24 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
         } as { list: string[]; map: Record<string, string> };
     };
 
-    const runFor = async (subset: Array<any>) => {
-        for (const player of subset) {
-            const operationDetails = OPERATION_CONFIG[player.operation];
-            if (!operationDetails?.modifyWinCondition) continue;
-            try {
-                const teamsData = await getTeamsMap();
-                await operationDetails.modifyWinCondition(
-                    lobbyId,
-                    teamsData.list,
-                    roundResult.votes,
-                    teamsData.map,
-                    db,
-                    roundResult
-                );
-            } catch (error) {
-                console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
-            }
+    // Run only the selected operations' modifyWinCondition in this round
+    for (const player of selected) {
+        const operationDetails = OPERATION_CONFIG[player.operation];
+        if (!operationDetails?.modifyWinCondition) continue;
+        try {
+            const teamsData = await getTeamsMap();
+            await operationDetails.modifyWinCondition(
+                lobbyId,
+                teamsData.list,
+                roundResult.votes,
+                teamsData.map,
+                db,
+                roundResult
+            );
+        } catch (error) {
+            console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
         }
-    };
-
-    // Phase 1: priority operations
-    const phase1 = playersWithOps.filter((p: any) => priorityOps.has(p.operation));
-    await runFor(phase1);
-
-    // Phase 2: remaining operations
-    const phase2 = playersWithOps.filter((p: any) => !priorityOps.has(p.operation));
-    await runFor(phase2);
+    }
 }
 
 export async function calculateRoundResults(lobbyId: string): Promise<RoundResult> {
@@ -415,11 +442,39 @@ export async function assignTeamsAndOperations(
 
     // Select operations (use metadata from GAME_CONFIG, ensure only available ops are used)
     const availableOps = GAME_CONFIG.OPERATIONS.filter(op => op.name in OPERATION_CONFIG);
-    const shuffledOperations = [...availableOps].sort(() => 0.5 - Math.random());
+    const winConditionOpsSet = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector']);
+    const winConditionOps = availableOps.filter(op => winConditionOpsSet.has(op.name));
+    const otherOps = availableOps.filter(op => !winConditionOpsSet.has(op.name));
 
-    const playerOperationsLocal = players.map((player, index) => ({
+    // Cap of win-condition operations we want present this round based on player count
+    const allowedOpsThisRound = players.length <= 6 ? 1 : (players.length <= 9 ? 2 : 3);
+
+    // Shuffle operations and players for assignment variety
+    const shuffle = <T,>(arr: T[]) => [...arr].sort(() => 0.5 - Math.random());
+    const shuffledWinOps = shuffle(winConditionOps.length ? winConditionOps : availableOps); // fallback if none configured
+    const shuffledOtherOps = shuffle(otherOps.length ? otherOps : availableOps);
+
+    // Assign at least `allowedOpsThisRound` win-condition operations (repeating if needed)
+    const assignedOpsByPlayer: Record<string, { name: string; hidden?: boolean; clientChooses?: boolean }> = {};
+    const targetWinOpsCount = Math.min(allowedOpsThisRound, players.length);
+    for (let i = 0; i < targetWinOpsCount; i++) {
+        const p = shuffledPlayers[i % shuffledPlayers.length];
+        const op = shuffledWinOps[i % shuffledWinOps.length];
+        assignedOpsByPlayer[p] = op;
+    }
+
+    // Assign remaining players any operations (mix remaining win ops and others), allowing repeats
+    for (const p of shuffledPlayers) {
+        if (assignedOpsByPlayer[p]) continue;
+        const idx = Object.keys(assignedOpsByPlayer).length; // progress-based index
+        const pool = [...shuffledOtherOps, ...shuffledWinOps];
+        const op = pool.length ? pool[idx % pool.length] : availableOps[idx % availableOps.length];
+        assignedOpsByPlayer[p] = op;
+    }
+
+    const playerOperationsLocal = players.map((player) => ({
         player,
-        operation: shuffledOperations[index % shuffledOperations.length]
+        operation: assignedOpsByPlayer[player]
     }));
 
     // Now write teams and assigned operation names into DB atomically
