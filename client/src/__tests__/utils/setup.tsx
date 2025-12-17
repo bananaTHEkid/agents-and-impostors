@@ -12,6 +12,7 @@ export const mockSocket: {
   off: (eventName: string, callback?: (data: unknown) => void) => void;
   connect: () => void;
   disconnect: () => void;
+  connected: boolean;
   id: string;
 } = {
   // Default emit behavior: can be overridden in tests.
