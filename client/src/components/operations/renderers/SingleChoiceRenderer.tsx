@@ -16,7 +16,6 @@ const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, use
 
   return (
     <Form onSubmit={handleSubmit} className="mt-3">
-      {info.message && <p>{info.message}</p>}
       <Form.Group className="mb-2">
         <Form.Label>Choose a player:</Form.Label>
         <Form.Select value={choice} onChange={(e) => setChoice(e.target.value)} required disabled={disabled}>

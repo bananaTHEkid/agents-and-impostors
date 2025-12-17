@@ -125,9 +125,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       }
     });
 
-    // Listen for new messages/prompts
+    // Listen for new messages/prompts (authoritative logs from server only)
     socket.on("game-message", (message: GameMessage) => {
       setMessages((prev) => [...prev, message]);
+    });
+    // Public operation assignment announcements are now covered by server 'game-message'
+    socket.on('operation-assigned-public', (_data: { player: string; operation: string }) => {
+      // No-op to avoid duplicate client-generated logs
     });
 
     // Listen for errors
@@ -175,13 +179,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
 
     socket.on("operation-assigned", (data: OperationAssignedData) => {
       console.log(`Operation assigned: ${data.operation}`);
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `Operation assigned: ${data.operation}`,
-        },
-      ]);
+      // Avoid adding extra client-side system messages here for consistency
     });
 
     socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['details'] }) => {
@@ -191,15 +189,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         const used = prev && prev.name === data.operation ? !!prev.used : false;
         return { name: data.operation, info: data.info, used } as PlayerOperation;
       });
-
-      // Add a user-friendly message about their prepared operation
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `Your operation "${data.operation}" is ready. ${data.info.message || 'Check the operation panel for details.'}`,
-        },
-      ]);
+      // Do NOT log any operation messages here to avoid revealing content before acceptance.
     });
 
     // Receive structured operation info updates (e.g., danish intelligence reveal)
@@ -245,13 +235,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       setCurrentTurnPlayer(data.currentTurnPlayer);
       // Mark players with current turn for UI highlighting
       setPlayers(prev => prev.map(p => ({ ...p, isCurrentTurn: p.username === data.currentTurnPlayer })));
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: 'system',
-          text: `Turn started: ${data.currentTurnPlayer}`,
-        },
-      ]);
     });
 
     socket.on('turn-change', (data: { currentTurnPlayer: string; turnIndex: number }) => {
@@ -259,13 +242,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       setCurrentTurnPlayer(data.currentTurnPlayer);
       // Update players list to reflect the new current turn player
       setPlayers(prev => prev.map(p => ({ ...p, isCurrentTurn: p.username === data.currentTurnPlayer })));
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: 'system',
-          text: `Turn changed: ${data.currentTurnPlayer}`,
-        },
-      ]);
     });
 
     socket.on("player-voted", (data: { username: string }) => {
@@ -321,6 +297,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("game-state");
       socket.off("player-list");
       socket.off("game-message");
+      socket.off('operation-assigned-public');
       socket.off("game-error");
       socket.off("game-started");
       socket.off("phase-change");

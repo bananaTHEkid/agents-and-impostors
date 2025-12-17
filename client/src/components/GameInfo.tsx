@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Badge, Alert } from 'react-bootstrap';
+import { Card, Alert } from 'react-bootstrap';
 import { useSocket } from '@/Socket/useSocket';
 import {
   OperationAssignedData,
@@ -7,7 +7,7 @@ import {
   PlayerJoinedData,
   ErrorData,
 } from '../types';
-import { GamePhase } from '../types';
+// no GamePhase import needed here
 
 interface OperationInfo {
   targetPlayer?: string;
@@ -34,8 +34,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   const [operation, setOperation] = useState<string | null>(null);
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
   const [team, setTeam] = useState<string | null>(null);
-  const [phase, setPhase] = useState<GamePhase>(GamePhase.WAITING);
-  const [showTeamReveal, setShowTeamReveal] = useState<boolean>(false);
+  const [opAccepted, setOpAccepted] = useState<boolean>(false);
   const username: string | null = sessionStorage.getItem('username');
 
   useEffect(() => {
@@ -43,37 +42,15 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
       socket.on('operation-prepared', (data: { operation: string; info: OperationInfo }) => {
         setOperation(data.operation);
         setOperationInfo(data.info);
+        setOpAccepted(false);
       });
 
-      socket.on('team-assignment', (data: { impostors: string[]; agents: string[]; phase: GamePhase }) => {
-        // Start team reveal animation
-        setShowTeamReveal(true);
-        
-        // Determine the player's team from the data after a short delay for animation
-        setTimeout(() => {
-          if (data.impostors && data.impostors.includes(username || '')) {
-            setTeam('impostor');
-          } else if (data.agents && data.agents.includes(username || '')) {
-            setTeam('agent');
-          }
-          
-          if (data.phase) {
-            setPhase(data.phase);
-          }
-        }, 2000); // 2-second delay for dramatic effect
-      });
-      
-      socket.on('phase-change', (data: { phase: GamePhase }) => {
-        setPhase(data.phase);
-        // If we're past team assignment, ensure team is visible
-        if (data.phase !== GamePhase.TEAM_ASSIGNMENT) {
-          setShowTeamReveal(false);
-        }
-      });
-
-      socket.on('game-state', (data: { phase: GamePhase }) => {
-        if (data.phase) {
-          setPhase(data.phase);
+      socket.on('team-assignment', (data: { impostors: string[]; agents: string[]; phase: any }) => {
+        // Record association for the player (no phase display here)
+        if (data.impostors && data.impostors.includes(username || '')) {
+          setTeam('impostor');
+        } else if (data.agents && data.agents.includes(username || '')) {
+          setTeam('agent');
         }
       });
 
@@ -85,10 +62,33 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         console.log(`Game results: ${JSON.stringify(data.results)}`);
       });
 
-      // Live updates to operation info (e.g., Danish Intelligence reveal)
+      // Live updates to operation info (e.g., reveals, selections)
       socket.on('operation-info', (data: { operation: string; info: Partial<OperationInfo>; message?: string }) => {
         // Only merge if this component is showing that operation
         setOperationInfo((prev) => ({ ...(prev || {}), ...(data.info || {}) }));
+      });
+
+      // Mark operation accepted/used to allow showing messages
+      socket.on('operation-used', (data: { success: boolean }) => {
+        if (data && data.success) setOpAccepted(true);
+      });
+
+      // Mark accepted when server broadcasts acceptance message for this user
+      socket.on('game-message', (msg: { type: string; text: string }) => {
+        try {
+          if (msg && msg.type === 'system' && typeof msg.text === 'string') {
+            if (username && msg.text.trim() === `${username} accepted their assignment.`) {
+              setOpAccepted(true);
+            }
+          }
+        } catch (_) {
+          // ignore
+        }
+      });
+
+      // Explicit acknowledgement for assignment acceptance (show messages only afterwards)
+      socket.on('assignment-accepted', (data: { success: boolean }) => {
+        if (data && data.success) setOpAccepted(true);
       });
 
       socket.on('player-joined', (data: PlayerJoinedData) => {
@@ -102,94 +102,51 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
       return () => {
         socket.off('operation-prepared');
         socket.off('team-assignment');
-        socket.off('phase-change');
-        socket.off('game-state');
         socket.off('operation-assigned');
         socket.off('game-results');
         socket.off('player-joined');
         socket.off('error');
         socket.off('operation-info');
+        socket.off('operation-used');
+        socket.off('game-message');
+        socket.off('assignment-accepted');
       };
     }
   }, [socket, username]);
 
-  const getTeamColor = (): string => {
-    if (!team) return 'secondary';
-    return team === 'impostor' ? 'danger' : 'success';
+  // Minimal association text only (no phase display here)
+
+  // Short operation explanations
+  const opShortDesc = (op?: string | null) => {
+    const name = (op || '').toLowerCase();
+    const map: Record<string, string> = {
+      'confession': 'Reveal your team to a selected player.',
+      'defector': 'Convert a selected player to the opposite team.',
+      'danish intelligence': 'Investigate two players for matching affiliations.',
+      'secret intel': 'Receive intel indicating if both or one are impostors.',
+      'old photographs': 'Reveal whether two players are on the same team.',
+      'grudge': 'You win if your grudge target is eliminated.',
+      'infatuation': 'You win if your chosen player wins.',
+      'sleeper agent': 'Your true team changes at resolution.',
+      'scapegoat': 'You only win if you are voted out.',
+      'anonymous tip': 'Get a tip about a player’s team.',
+      'secret tip': 'Learn a single player’s affiliation.'
+    };
+    return map[name] || '';
   };
 
-  const getPhaseLabel = (): string => {
-    switch (phase) {
-      case GamePhase.WAITING:
-        return 'Waiting for Game to Start';
-      case GamePhase.TEAM_ASSIGNMENT:
-        return 'Team Assignment Phase';
-      case GamePhase.OPERATION_ASSIGNMENT:
-        return 'Operation Assignment Phase';
-      case GamePhase.VOTING:
-        return 'Voting Phase';
-      case GamePhase.COMPLETED:
-        return 'Game Completed';
-      default:
-        return 'Unknown Phase';
-    }
-  };
-
-  // Only show team and operation info after they're assigned
-  const showTeamInfo: boolean = phase !== GamePhase.WAITING && team !== null && !showTeamReveal;
-  const hasImmediateReveal = !!(operationInfo && (operationInfo as any).revealed);
-  const showOperationInfo: boolean =
-    operation !== null && (
-      phase === GamePhase.VOTING ||
-      phase === GamePhase.COMPLETED ||
-      // Show during assignment if reveal exists (e.g., danish intelligence, secret intel, photographs)
-      (phase === GamePhase.OPERATION_ASSIGNMENT && hasImmediateReveal)
-    );
-
-  // Team reveal component
-  const renderTeamReveal = (): JSX.Element | null => {
-    if (!showTeamReveal || phase !== GamePhase.TEAM_ASSIGNMENT) return null;
-    
-    return (
-      <div className="team-reveal-animation">
-        <div className="text-center mb-4">
-          <div className="spinner-grow" role="status">
-            <span className="visually-hidden">Assigning team...</span>
-          </div>
-          <h5 className="mt-3">Assigning your team...</h5>
-          <div className="card-flip my-4">
-            <div className="card-inner">
-              <div className="card-front bg-secondary text-white p-4 rounded">
-                <h3>?</h3>
-                <p>Your Team</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const showOperationInfo: boolean = operation !== null;
 
   return (
     <Card className={`mb-4 ${className || ''}`}>
       <Card.Header className="d-flex justify-content-between align-items-center">
-        <h5>Your Role</h5>
-        <Badge bg="info">{getPhaseLabel()}</Badge>
+        <h5>Your Status</h5>
       </Card.Header>
       <Card.Body>
-        {renderTeamReveal()}
-
-        {showTeamInfo && (
-          <div className="mb-3 team-info-container">
+        {team && (
+          <div className="mb-3">
             <Alert variant={team === 'impostor' ? 'danger' : 'success'} className="text-center">
-              <h4 className="alert-heading">You are an {team === 'impostor' ? 'IMPOSTOR' : 'AGENT'}!</h4>
-              <hr />
-              <h6>Team: <Badge bg={getTeamColor()}>{team}</Badge></h6>
-              <p className="small mb-0">
-                {team === 'impostor' 
-                  ? 'Your goal is to remain undetected and make the agents vote incorrectly.' 
-                  : 'Your goal is to identify and vote out the impostors.'}
-              </p>
+              <h5 className="mb-0">You are an {team === 'impostor' ? 'impostor' : 'agent'}.</h5>
             </Alert>
           </div>
         )}
@@ -197,74 +154,29 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         {showOperationInfo && (
           <div>
             <h6>Operation: {operation}</h6>
+            {opShortDesc(operation) && <p className="text-muted mb-2">{opShortDesc(operation)}</p>}
             <div className="operation-details">
-              {/* Special operation details */}
-              {operation === 'grudge' && (
-                <p>You have a grudge. You win if your target is eliminated.</p>
+              {/* Relevant operation message (only after acceptance/usage) */}
+              {opAccepted && operationInfo && operationInfo.revealed?.message && (
+                <p>{operationInfo.revealed.message}</p>
               )}
-              {operation === 'infatuation' && (
-                <p>You have an infatuation. You win if your target's team wins.</p>
+              {opAccepted && operationInfo && !operationInfo.revealed?.message && (operationInfo as any).message && (
+                <p>{(operationInfo as any).message}</p>
               )}
-              {operation === 'sleeper agent' && operationInfo && (
-                <p>You are a sleeper agent. Your true team is the opposite of what's shown above.</p>
+
+              {/* Selected input summary */}
+              {operationInfo && (operationInfo as any).targetPlayer && (
+                <p>You selected {(operationInfo as any).targetPlayer}.</p>
               )}
-              {operation === 'secret agent' && operationInfo && (
-                <p>Secret information: {operationInfo.information}</p>
+              {operationInfo && (operationInfo as any).targetPlayer1 && (operationInfo as any).targetPlayer2 && (
+                <p>You selected {(operationInfo as any).targetPlayer1} and {(operationInfo as any).targetPlayer2}.</p>
               )}
-              {operation === 'anonymous tip' && operationInfo && (
-                <p>Anonymous tip about {operationInfo.revealedPlayer}: Team {operationInfo.team}.</p>
-              )}
-              {operation === 'danish intelligence' && operationInfo && (
-                <div>
-                  {operationInfo.revealed ? (
-                    <div>
-                      {operationInfo.revealed.message && (
-                        <p>{operationInfo.revealed.message}</p>
-                      )}
-                      {(operationInfo.revealed.target1Name || operationInfo.revealed.target2Name) && (
-                        <ul className="mb-0">
-                          {operationInfo.revealed.target1Name && (
-                            <li>
-                              {operationInfo.revealed.target1Name}: {operationInfo.revealed.target1Team}
-                            </li>
-                          )}
-                          {operationInfo.revealed.target2Name && (
-                            <li>
-                              {operationInfo.revealed.target2Name}: {operationInfo.revealed.target2Team}
-                            </li>
-                          )}
-                        </ul>
-                      )}
-                    </div>
-                  ) : (
-                    <p>Waiting for intelligence results…</p>
-                  )}
-                </div>
-              )}
-              {operation === 'confession' && (
-                <p>Your role is visible to others.</p>
-              )}
-              {operation === 'secret intel' && operationInfo && (
-                <div>
-                  {operationInfo.revealed ? (
-                    <p>{operationInfo.revealed.message}</p>
-                  ) : (
-                    <p>Waiting for intelligence results…</p>
-                  )}
-                </div>
-              )}
-              {operation === 'old photographs' && (
-                <p>You possess old photographs that reveal information.</p>
-              )}
-              {operation === 'scapegoat' && (
-                <p>You win if you are eliminated.</p>
-              )}
+              {/* Keep panel concise; input guidance stays in OperationPanel */}
             </div>
           </div>
         )}
-        
-        {!showTeamInfo && !showOperationInfo && !showTeamReveal && (
-          <p>Waiting for role assignment...</p>
+        {!team && !showOperationInfo && (
+          <p>Waiting for assignment...</p>
         )}
       </Card.Body>
     </Card>

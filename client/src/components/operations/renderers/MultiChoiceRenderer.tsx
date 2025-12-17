@@ -5,7 +5,7 @@ import type { OperationRendererProps } from '@/types';
 const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, username, disabled, onSubmit }) => {
   const info = operation?.info || {};
   const optionsAll: string[] = Array.isArray(info.availablePlayers) ? info.availablePlayers : [];
-  const revealed = (info && (info as any).revealed) || null;
+  // Keep panel focused on input only
   // Ensure the receiving player is not an option
   const options: string[] = optionsAll.filter(p => p !== username);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -38,32 +38,8 @@ const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, user
     onSubmit?.({ targetPlayer1: picks[0], targetPlayer2: picks[1] });
   };
 
-  if (revealed) {
-    return (
-      <div className="mt-3">
-        {info.message && <p>{info.message}</p>}
-        {revealed.message && <p className="mb-2">{revealed.message}</p>}
-        {(revealed.target1Name || revealed.target2Name) && (
-          <ul className="mb-0">
-            {revealed.target1Name && (
-              <li>
-                {revealed.target1Name}: {revealed.target1Team}
-              </li>
-            )}
-            {revealed.target2Name && (
-              <li>
-                {revealed.target2Name}: {revealed.target2Team}
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-    );
-  }
-
   return (
     <Form onSubmit={handleSubmit} className="mt-3">
-      {info.message && <p>{info.message}</p>}
       <div className="mb-2">
         {options.map(p => (
           <Form.Check

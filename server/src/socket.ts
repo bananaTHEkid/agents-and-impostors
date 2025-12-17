@@ -133,7 +133,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           /* ignore */
         }
 
-        io?.to(lobby.id).emit('game-message', { type: 'system', text: `${username} has reconnected` });
+        // Suppress reconnection spam in logs for cleaner UX
 
         console.log(`Player ${username} rejoined game in lobby ${lobbyCode}`);
       } catch (error) {
@@ -272,6 +272,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
           const playerSocketId = connectionManager.getSocketId(player);
           io?.to(lobbyId).emit('operation-assigned-public', { player, operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name });
+          // Broadcast standardized log for initial assignment as well
+          if (operationMeta?.name) {
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${player} has received the ${operationMeta.name} operation` });
+          }
 
           if (playerSocketId) {
             io?.to(playerSocketId).emit('operation-assigned', { operation: operationMeta?.name });
@@ -328,6 +332,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, username]);
+        // Acknowledge acceptance to the accepting player for client-side gating
+        socket.emit('assignment-accepted', { success: true });
 
         // If this player has 'secret intel', compute and reveal immediately to them
         try {
@@ -403,6 +409,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
           console.log(`Assigning operation '${nextOpMeta?.name}' to player ${nextPlayer} in lobby ${lobbyCode}`);
           io?.to(lobbyId).emit('operation-assigned-public', { player: nextPlayer, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+          // Broadcast a clear log message for the turn change with the operation received
+          if (nextOpMeta?.name) {
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${nextPlayer} has received the ${nextOpMeta.name} operation` });
+          }
 
           if (playerSocketId) {
             io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
@@ -494,6 +504,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           console.warn(`Target player ${targetPlayer} not connected`);
         }
 
+        // Inform the confessor's client of their selected target for UI display
+        socket.emit('operation-info', { operation: 'confession', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true });
         socket.emit('game-message', { type: 'system', text: `${confessor.username} used ${'confession'}` });
         // Advance turn after successful operation
@@ -561,6 +573,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           [JSON.stringify({ targetPlayer, teamChanged: false }), lobbyId, defector.username]
         );
 
+        // Inform the defector's client of their selected target for UI display
+        socket.emit('operation-info', { operation: 'defector', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true, message: `You've chosen ${targetPlayer} as your target. Their team will be switched during the next phase.` });
         socket.emit('game-message', { type: 'system', text: `${defector.username} used ${'defector'}` });
         // Advance turn after successful operation
@@ -632,14 +646,14 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                   reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
                 }
 
-                // Persist reveal into operation_info
+                // Persist reveal into operation_info, and include selected targets for client display
                 await db.run(
                   "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
-                  [JSON.stringify({ revealed: reveal }), lobbyId, emitter]
+                  [JSON.stringify({ revealed: reveal, targetPlayer1: t1, targetPlayer2: t2 }), lobbyId, emitter]
                 );
 
-                // Notify emitter only with structured info
-                socket.emit('operation-info', { operation, info: { revealed: reveal }, message: reveal.message });
+                // Notify emitter only with structured info (include selection for UI)
+                socket.emit('operation-info', { operation, info: { revealed: reveal, targetPlayer1: t1, targetPlayer2: t2 }, message: reveal.message });
               }
             }
           } catch (intelErr) {
