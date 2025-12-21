@@ -246,13 +246,13 @@ export async function calculateRoundResults(lobbyId: string): Promise<RoundResul
         return acc;
     }, {} as Record<string, number>);
 
-    let winner: 'agents' | 'impostors';
+    let winner: 'agent' | 'impostor';
     if (!teamCounts['impostor'] || teamCounts['impostor'] === 0) {
-        winner = 'agents';
+        winner = 'agent';
     } else if (!teamCounts['agent'] || teamCounts['agent'] <= teamCounts['impostor']) {
-        winner = 'impostors';
+        winner = 'impostor';
     } else {
-        winner = 'agents';
+        winner = 'agent';
     }
     
     const currentRoundResult: RoundResult = {
@@ -295,17 +295,17 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
         return acc;
     }, {} as Record<string, number>);
 
-    let overallWinner: 'agents' | 'impostors';
+    let overallWinner: 'agent' | 'impostor';
     if (!teamCounts['impostor'] || teamCounts['impostor'] === 0) {
-        overallWinner = 'agents';
+        overallWinner = 'agent';
     } else if (!teamCounts['agent'] || teamCounts['agent'] <= teamCounts['impostor']) {
-        overallWinner = 'impostors';
+        overallWinner = 'impostor';
     } else {
-        overallWinner = 'agents';
+        overallWinner = 'agent';
     }
 
     // Team scores: single round
-    const teamScores = { agents: 0, impostors: 0 };
+    const teamScores: { agent: number; impostor: number } = { agent: 0, impostor: 0 };
     teamScores[overallWinner] = 1;
 
     // Compute mvp: simple heuristic using times voted out and whether player's team matched overallWinner

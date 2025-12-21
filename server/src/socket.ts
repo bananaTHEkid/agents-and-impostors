@@ -375,6 +375,22 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           console.error('Error revealing secret intel on accept:', intelErr);
         }
 
+        // If all players have accepted their assignments, move to voting immediately.
+        try {
+          const remainingUnaccepted = await db.get(
+            'SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_accepted = 0',
+            [lobbyId]
+          );
+          if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            console.log(`All assignments accepted for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+            return;
+          }
+        } catch (checkErr) {
+          console.error('Failed to check acceptance completion:', checkErr);
+        }
+
         // Use turn order to find the next unassigned player (starting after current player)
         const turnState = turnStateByLobby[lobbyId];
         if (!turnState) {
@@ -389,47 +405,52 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        // Look for next unassigned player in order
-        let nextPlayer: string | null = null;
-        for (let i = currentIdx + 1; i < turnState.order.length; i++) {
-          const candidate = turnState.order[i];
+        // Look for next unassigned players, auto-assigning for offline ones, stopping on first online
+        const order = turnState.order;
+        let assignedOnlineNext = false;
+        const playerOps = playerOperationsByLobby[lobbyId] || [];
+
+        for (let step = 1; step <= order.length; step++) {
+          const idx = (currentIdx + step) % order.length;
+          const candidate = order[idx];
           const candidateRow = await db.get('SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
-          if (candidateRow && !candidateRow.operation_assigned) {
-            nextPlayer = candidate;
-            break;
+          if (!candidateRow || candidateRow.operation_assigned) {
+            continue;
           }
-        }
 
-        if (nextPlayer) {
-          // Find the operation for this player from playerOperationsByLobby
-          const playerOps = playerOperationsByLobby[lobbyId] || [];
-          const nextOpMeta = playerOps.find(op => op.player === nextPlayer)?.operation;
+          const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
+          const playerSocketId = connectionManager.getSocketId(candidate);
 
-          const playerSocketId = connectionManager.getSocketId(nextPlayer);
-
-          console.log(`Assigning operation '${nextOpMeta?.name}' to player ${nextPlayer} in lobby ${lobbyCode}`);
-          io?.to(lobbyId).emit('operation-assigned-public', { player: nextPlayer, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
-          // Broadcast a clear log message for the turn change with the operation received
+          console.log(`Assigning operation '${nextOpMeta?.name}' to player ${candidate} in lobby ${lobbyCode}`);
+          io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
           if (nextOpMeta?.name) {
-            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${nextPlayer} has received the ${nextOpMeta.name} operation` });
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
           }
 
           if (playerSocketId) {
+            // Online: assign and wait for their acceptance to proceed
             io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
-            await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
-            console.log(`Sent operation-assigned to ${nextPlayer} (socket ${playerSocketId})`);
-            // Advance turn to this newly-assigned player
+            await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+            console.log(`Sent operation-assigned to ${candidate} (socket ${playerSocketId})`);
             advanceTurn(lobbyId);
+            assignedOnlineNext = true;
+            break;
           } else {
-            await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, nextPlayer]);
-            console.log(`Auto-accepted assignment for offline player ${nextPlayer} in lobby ${lobbyCode}`);
-            // Continue to check for more players after this one
+            // Offline: auto-accept and continue scanning for more unassigned players
+            await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+            console.log(`Auto-accepted assignment for offline player ${candidate} in lobby ${lobbyCode}`);
+            // Continue loop to find next unassigned
           }
-        } else {
-          // No more unassigned players -> move to voting
-          await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-          io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
-          console.log(`All assignments complete for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+        }
+
+        if (!assignedOnlineNext) {
+          // After auto-assigning all offline players, if no online candidate remained, move to voting
+          const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
+          if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+            await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+            console.log(`All assignments complete for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+          }
         }
       } catch (err) {
         console.error('Error in accept-assignment:', err);
@@ -473,17 +494,20 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        const confessor = await db.get("SELECT username, team FROM players WHERE lobby_id = ? AND operation = 'confession'", [lobbyId]);
+        // Identify the confessor strictly as the emitter with 'confession' operation
+        const confessor = await db.get("SELECT username, team, operation_info FROM players WHERE lobby_id = ? AND username = ? AND operation = 'confession'", [lobbyId, emitter]);
         if (!confessor) {
           socket.emit('error', { message: 'Invalid confession operation' });
           return;
         }
-
-        const confessionUsed = await db.get("SELECT operation_accepted FROM players WHERE lobby_id = ? AND operation = 'confession'", [lobbyId]);
-        if (confessionUsed && !validateOperationNotUsed(confessionUsed.operation_accepted)) {
-          socket.emit('error', { message: 'Confession operation has already been used' });
-          return;
-        }
+        // Check if confessor already used confession based on operation_info flag
+        try {
+          const info = confessor.operation_info ? JSON.parse(confessor.operation_info) : {};
+          if (info && info.confessionMade === true) {
+            socket.emit('error', { message: 'Confession operation has already been used' });
+            return;
+          }
+        } catch { /* ignore parse errors */ }
 
         const confessionInfo = sanitizeOperation({ type: 'received_confession', fromPlayer: confessor.username, theirTeam: confessor.team });
 
@@ -495,6 +519,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         await db.run(
           "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
           [JSON.stringify({ confessionMade: true, targetPlayer }), lobbyId, confessor.username]
+        );
+        // Mark acceptance after successful client-choice operation to advance phase when all accepted
+        await db.run(
+          'UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?',
+          [lobbyId, confessor.username]
         );
 
         const targetSocketId = connectionManager.getSocketId(targetPlayer);
@@ -510,6 +539,68 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.emit('game-message', { type: 'system', text: `${confessor.username} used ${'confession'}` });
         // Advance turn after successful operation
         try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+
+        // Progress operation assignments: find next unassigned player and assign
+        try {
+          const turnState = turnStateByLobby[lobbyId];
+          if (turnState) {
+            const currentIdx = turnState.order.indexOf(confessor.username);
+            const order = turnState.order;
+            let assignedOnlineNext = false;
+            const playerOps = playerOperationsByLobby[lobbyId] || [];
+
+            for (let step = 1; step <= order.length; step++) {
+              const idx = (currentIdx + step) % order.length;
+              const candidate = order[idx];
+              const candidateRow = await db.get('SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              if (!candidateRow || candidateRow.operation_assigned) {
+                continue;
+              }
+
+              const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
+              const playerSocketId = connectionManager.getSocketId(candidate);
+
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              if (nextOpMeta?.name) {
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+              }
+
+              if (playerSocketId) {
+                io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
+                await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+                advanceTurn(lobbyId);
+                assignedOnlineNext = true;
+                break;
+              } else {
+                await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              }
+            }
+
+            if (!assignedOnlineNext) {
+              const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
+              if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+                await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+              }
+            }
+          }
+        } catch (progressErr) {
+          console.error('Failed to progress assignment after confession:', progressErr);
+        }
+        // Transition to voting if all assignments accepted
+        try {
+          const remainingUnaccepted = await db.get(
+            'SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_accepted = 0',
+            [lobbyId]
+          );
+          if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            console.log(`All assignments accepted (via confession) for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+          }
+        } catch (acceptErr) {
+          console.error('Failed to mark acceptance after confession:', acceptErr);
+        }
       } catch (error) {
         console.error('Error processing confession:', error);
         socket.emit('error', { message: 'Failed to process confession' });
@@ -666,6 +757,71 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         // Advance turn after operation
         try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+
+        // Treat operation submission as acceptance for client-choice operations.
+        // Mark the emitter's assignment as accepted and transition to voting if all accepted.
+        try {
+          await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, emitter]);
+          const remainingUnaccepted = await db.get(
+            'SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_accepted = 0',
+            [lobbyId]
+          );
+          if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            console.log(`All assignments accepted (via operation-used) for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+          }
+        } catch (acceptErr) {
+          console.error('Failed to mark acceptance after operation-used:', acceptErr);
+        }
+
+        // Progress operation assignments: find next unassigned player and assign
+        try {
+          const turnState = turnStateByLobby[lobbyId];
+          if (turnState) {
+            const currentIdx = turnState.order.indexOf(emitter || '');
+            const order = turnState.order;
+            let assignedOnlineNext = false;
+            const playerOps = playerOperationsByLobby[lobbyId] || [];
+
+            for (let step = 1; step <= order.length; step++) {
+              const idx = (currentIdx + step) % order.length;
+              const candidate = order[idx];
+              const candidateRow = await db.get('SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              if (!candidateRow || candidateRow.operation_assigned) {
+                continue;
+              }
+
+              const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
+              const playerSocketId = connectionManager.getSocketId(candidate);
+
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              if (nextOpMeta?.name) {
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+              }
+
+              if (playerSocketId) {
+                io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
+                await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+                advanceTurn(lobbyId);
+                assignedOnlineNext = true;
+                break;
+              } else {
+                await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              }
+            }
+
+            if (!assignedOnlineNext) {
+              const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
+              if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+                await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+              }
+            }
+          }
+        } catch (progressErr) {
+          console.error('Failed to progress assignment after operation-used:', progressErr);
+        }
       } catch (err) {
         console.error('Error handling generic operation-used:', err);
         socket.emit('error', { message: 'Failed to process operation' });

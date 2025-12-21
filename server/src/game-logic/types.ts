@@ -7,20 +7,20 @@ export enum GamePhase {
 }
 
 export interface RoundResult {
-    winner: 'agents' | 'impostors';
+    winner: 'agent' | 'impostor';
     eliminatedPlayers: string[];
     votes: Record<string, string>;
     roundNumber: number;
 }
 
 export interface FinalResults {
-    overallWinner: 'agents' | 'impostors';
+    overallWinner: 'agent' | 'impostor';
     roundResults: RoundResult[];
     mvp: string;
     totalRounds: number;
     teamScores: {
-        agents: number;
-        impostors: number;
+        agent: number;
+        impostor: number;
     };
     players: Array<{
         username: string;

@@ -24,8 +24,8 @@ test.describe('Turn-based Operation Flow', () => {
       await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 10000 });
       await hostPage.getByTestId('start-game-button').click();
 
-      // Wait for all pages to reach Operation Assignment Phase
-      await Promise.all(pages.map(page => page.getByText('Operation Assignment Phase').waitFor({ timeout: 60000 })));
+      // Wait for all pages to reach Operation Assignment Phase (unique heading)
+      await Promise.all(pages.map(page => page.getByRole('heading', { name: 'Operation Assignment Phase' }).waitFor({ timeout: 60000 })));
 
       // Wait for the turn banner to appear on all pages
       await Promise.all(pages.map(page => page.getByText(/^Current turn:/).waitFor({ timeout: 60000 })));

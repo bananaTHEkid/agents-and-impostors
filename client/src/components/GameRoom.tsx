@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Button,
   ListGroup,
@@ -73,6 +73,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   // operationTargetPlayer is now handled inside OperationPanel renderers
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string | null>(null);
   const username: string = sessionStorage.getItem("username") ?? "";
+
+  // Compute voted counts from finalRound unconditionally to keep hook order stable
+  const votedCounts = useMemo(() => {
+    if (!finalRound?.votes) return { counts: {} as Record<string, number>, max: 0 };
+    const counts: Record<string, number> = {};
+    Object.values(finalRound.votes).forEach(target => {
+      counts[target] = (counts[target] || 0) + 1;
+    });
+    const max = Object.values(counts).length ? Math.max(...Object.values(counts)) : 0;
+    return { counts, max };
+  }, [finalRound]);
 
   // Save state to sessionStorage whenever it changes
   useEffect(() => {
@@ -400,15 +411,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         const norm = (s?: string) => (s || '').toLowerCase();
         const winners = (gameData?.results || []).filter(r => ['win', 'won', 'victory'].includes(norm(r.win_status)));
         const losers = (gameData?.results || []).filter(r => ['lose', 'lost', 'defeat'].includes(norm(r.win_status)));
-        const votedCounts = React.useMemo(() => {
-          if (!finalRound?.votes) return { counts: {} as Record<string, number>, max: 0 };
-          const counts: Record<string, number> = {};
-          Object.values(finalRound.votes).forEach(target => {
-            counts[target] = (counts[target] || 0) + 1;
-          });
-          const max = Object.values(counts).length ? Math.max(...Object.values(counts)) : 0;
-          return { counts, max };
-        }, [finalRound]);
         return (
           <div className="text-center p-4">
             <h4>Game Completed</h4>

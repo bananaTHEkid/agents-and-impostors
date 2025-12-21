@@ -16,7 +16,7 @@ export interface Player {
 }
 
 export interface RoundResult {
-  winner: 'agents' | 'impostors';
+  winner: 'agent' | 'impostor';
   eliminatedPlayers: string[];
   votes: Record<string, string>;
   roundNumber: number;

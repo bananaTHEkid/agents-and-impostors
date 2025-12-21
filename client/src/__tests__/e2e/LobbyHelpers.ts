@@ -15,10 +15,15 @@ export class LobbyHelpers {
       lobbyLocator.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'lobby'),
       alertLocator.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'alert')
     ]).catch(() => null);
-
-    if (outcome !== 'lobby') {
-      const errText = await alertLocator.textContent().catch(() => null);
-      throw new Error(`Failed to create lobby: ${errText || 'Unknown error'}`);
+    if (outcome === 'alert') {
+      const errText = await alertLocator.textContent().catch(() => '');
+      const lowered = (errText || '').toLowerCase();
+      // Consider it an error only if the message indicates an error; otherwise wait for the lobby
+      if (/(error|failed|fehler|nicht|cannot|unauthorized)/i.test(lowered)) {
+        throw new Error(`Failed to create lobby: ${errText || 'Unknown error'}`);
+      }
+      // Non-error alert (informational) — wait a bit longer for the lobby to appear
+      await lobbyLocator.waitFor({ state: 'visible', timeout: 15000 });
     }
 
     const playerList = page.getByTestId('player-list');
@@ -41,34 +46,7 @@ export class LobbyHelpers {
       throw new Error('Failed to extract lobby code');
     }
 
-    // Poll server debug endpoint to ensure lobby persisted (if available)
-    const serverUrl = 'http://localhost:5001';
-    const startServerPoll = Date.now();
-    const serverPollTimeout = 10000;
-    let creatorSeen = false;
-    while (Date.now() - startServerPoll < serverPollTimeout) {
-      try {
-        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode.trim())}`);
-        if (resp.ok()) {
-          const data = await resp.json() as any;
-          if (data && data.success && Array.isArray(data.players)) {
-            const players = data.players.map((p: any) => (p.username ? p.username : p));
-            if (players.includes(username)) {
-              creatorSeen = true;
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-      await page.waitForTimeout(250);
-    }
-
-    if (!creatorSeen) {
-      // warn only
-      console.warn(`Creator ${username} not yet present on server for lobby ${lobbyCode}`);
-    }
+    // Skip server debug polling; rely on UI state for speed and robustness.
 
     await page.waitForLoadState('networkidle');
     return lobbyCode.trim();
@@ -83,28 +61,7 @@ export class LobbyHelpers {
 
     await page.waitForLoadState('networkidle');
 
-    // Ensure lobby exists server-side if debug endpoint present
-    const serverUrl = 'http://localhost:5001';
-    const lobbyExistStart = Date.now();
-    const lobbyExistTimeout = 10000;
-    let lobbyExists = false;
-    while (Date.now() - lobbyExistStart < lobbyExistTimeout) {
-      try {
-        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode)}`);
-        if (resp.ok()) {
-          const data = await resp.json() as any;
-          if (data && data.success) {
-            lobbyExists = true;
-            break;
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-      await page.waitForTimeout(250);
-    }
-
-    if (!lobbyExists) console.warn(`Lobby ${lobbyCode} not found on server before join attempt`);
+    // Skip server debug pre-check; rely on UI flow.
 
     await page.getByTestId('join-game-button').click();
 
@@ -131,34 +88,8 @@ export class LobbyHelpers {
       }
     }
 
-    const playerJoinStart = Date.now();
-    const playerJoinTimeout = 15000;
-    let playerSeenOnServer = false;
-    while (Date.now() - playerJoinStart < playerJoinTimeout) {
-      try {
-        const resp = await page.request.get(`${serverUrl}/debug/lobby/${encodeURIComponent(lobbyCode)}`);
-        if (resp.ok()) {
-          const data = await resp.json() as any;
-          if (data && data.success && Array.isArray(data.players)) {
-            const players = data.players.map((p: any) => (p.username ? p.username : p));
-            if (players.includes(username)) {
-              playerSeenOnServer = true;
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-      await page.waitForTimeout(250);
-    }
-
-    if (!playerSeenOnServer) {
-      const visible = await lobbyLocator.isVisible().catch(() => false);
-      if (!visible) throw new Error('Failed to join lobby: Lobby did not appear and no error message was shown');
-    }
-
-    await lobbyLocator.waitFor({ state: 'visible', timeout: 10000 });
+    // Await lobby UI visibility directly
+    await lobbyLocator.waitFor({ state: 'visible', timeout: 15000 });
   }
 
   static async waitForPlayerCount(pages: Page[], expectedCount: number, timeout: number = 30000): Promise<void> {

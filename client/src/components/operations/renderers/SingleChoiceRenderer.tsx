@@ -18,14 +18,14 @@ const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, use
     <Form onSubmit={handleSubmit} className="mt-3">
       <Form.Group className="mb-2">
         <Form.Label>Choose a player:</Form.Label>
-        <Form.Select value={choice} onChange={(e) => setChoice(e.target.value)} required disabled={disabled}>
+        <Form.Select data-testid="operation-choose-player" value={choice} onChange={(e) => setChoice(e.target.value)} required disabled={disabled}>
           <option value="">Select a player</option>
           {options.filter(p => p !== username).map(p => (
             <option key={p} value={p}>{p}</option>
           ))}
         </Form.Select>
       </Form.Group>
-      <Button type="submit" disabled={disabled || !choice} size="sm">Submit</Button>
+      <Button data-testid="operation-submit" type="submit" disabled={disabled || !choice} size="sm">Submit</Button>
     </Form>
   );
 };
