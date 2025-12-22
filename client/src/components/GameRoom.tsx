@@ -72,6 +72,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const [finalRound, setFinalRound] = useState<RoundResult | null>(null);
   // operationTargetPlayer is now handled inside OperationPanel renderers
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string | null>(null);
+  // Track publicly announced operation names (or hidden markers) per player
+  const [publicOperations, setPublicOperations] = useState<Record<string, string>>({});
   const username: string = sessionStorage.getItem("username") ?? "";
 
   // Compute voted counts from finalRound unconditionally to keep hook order stable
@@ -141,9 +143,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     socket.on("game-message", (message: GameMessage) => {
       setMessages((prev) => [...prev, message]);
     });
-    // Public operation assignment announcements are now covered by server 'game-message'
-    socket.on('operation-assigned-public', (_data: { player: string; operation: string }) => {
-      // No-op to avoid duplicate client-generated logs
+    // Track public operation assignment announcements for sidebar display
+    socket.on('operation-assigned-public', (data: { player: string; operation: string }) => {
+      setPublicOperations(prev => ({ ...prev, [data.player]: data.operation }));
     });
 
     // Listen for errors
@@ -655,10 +657,30 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
                           {player.username.charAt(0).toUpperCase()}
                         </div>
-                        <span className="font-medium">
-                          {player.username}
-                          {player.username === username && " (You)"}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {player.username}
+                            {player.username === username && " (You)"}
+                          </span>
+                          <span className="text-xs text-gray-600">
+                            Operation: {
+                              (() => {
+                                const pub = publicOperations[player.username];
+                                // Default: pending until publicly announced
+                                let label = 'pending...';
+                                if (player.username === username) {
+                                  // The receiving player always sees their real operation name when available
+                                  label = myOperation?.name
+                                    || (pub ? (/hidden/i.test(pub) ? 'hidden' : pub) : 'pending...');
+                                } else {
+                                  // Other players see the public placeholder or name; hidden ops show as 'hidden'
+                                  label = pub ? (/hidden/i.test(pub) ? 'hidden' : pub) : 'pending...';
+                                }
+                                return label;
+                              })()
+                            }
+                          </span>
+                        </div>
                       </div>
                       {player.username === currentTurnPlayer && (
                         <Badge bg="warning" pill className="text-dark py-2 px-3">Current Turn</Badge>

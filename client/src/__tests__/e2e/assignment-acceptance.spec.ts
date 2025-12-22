@@ -87,6 +87,23 @@ test.describe('Operation Assignment Acceptance', () => {
             }
             if (enabledVisibleCount >= 2) break;
           }
+          // Text-input operation: textbox + enabled submit button
+          const textboxCountInit = await phaseContent.getByRole('textbox').count();
+          if (textboxCountInit > 0) {
+            // If any submit button is enabled, consider ready
+            const submitByTestId = phaseContent.getByTestId('operation-submit');
+            const submitCount = await submitByTestId.count().catch(() => 0);
+            let submitReady = false;
+            if (submitCount > 0) {
+              submitReady = !(await submitByTestId.isDisabled().catch(() => false));
+            } else {
+              const anySubmit = phaseContent.getByRole('button', { name: /send|submit/i }).first();
+              const exists = await anySubmit.isVisible().catch(() => false);
+              const enabled = exists && !(await anySubmit.isDisabled().catch(() => false));
+              submitReady = enabled;
+            }
+            if (submitReady) break;
+          }
           // If page already shows Voting Phase, stop waiting for inputs
           const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
           if (votingVisible) break;
@@ -208,6 +225,42 @@ test.describe('Operation Assignment Acceptance', () => {
             // After accepting, wait for the accept button to disappear or disable
             await expect(maybeAccept).toBeDisabled({ timeout: 10000 }).catch(async () => {
               await expect(maybeAccept).toBeHidden({ timeout: 10000 });
+            });
+          }
+          continue;
+        }
+
+        // Text-input operation: fill textbox and submit
+        const textboxCount = await phaseContent.getByRole('textbox').count();
+        if (textboxCount > 0) {
+          const tb = phaseContent.getByRole('textbox').first();
+          await tb.fill('ok');
+          let submitBtn = phaseContent.getByTestId('operation-submit');
+          const submitCount = await submitBtn.count().catch(() => 0);
+          if (submitCount === 0) {
+            submitBtn = phaseContent.getByRole('button', { name: /send|submit/i }).first();
+          }
+          await expect(submitBtn).toBeEnabled();
+          await submitBtn.click();
+          // Wait for acknowledgment: submit disabled/hidden or Voting Phase visible
+          {
+            const ackDeadline = Date.now() + 20000;
+            while (Date.now() < ackDeadline) {
+              const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
+              if (votingVisible) break;
+              const disabled = await submitBtn.isDisabled().catch(() => false);
+              const visible = await submitBtn.isVisible().catch(() => false);
+              if (disabled || !visible) break;
+              await page.waitForTimeout(300);
+            }
+          }
+          // Some flows may still require explicit acceptance; click if present
+          const maybeAccept3 = phaseContent.getByTestId('accept-assignment-btn');
+          if (await maybeAccept3.isVisible().catch(() => false)) {
+            await expect(maybeAccept3).toBeEnabled();
+            await maybeAccept3.click();
+            await expect(maybeAccept3).toBeDisabled({ timeout: 10000 }).catch(async () => {
+              await expect(maybeAccept3).toBeHidden({ timeout: 10000 });
             });
           }
           continue;
