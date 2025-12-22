@@ -36,7 +36,7 @@ test.describe('Operation Assignment Acceptance', () => {
         {
           let anyVoting = false;
           for (const p of pages) {
-            const visible = await p.getByText('Voting Phase').isVisible().catch(() => false);
+            const visible = await p.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
             if (visible) { anyVoting = true; break; }
           }
           if (anyVoting) continue;
@@ -82,7 +82,7 @@ test.describe('Operation Assignment Acceptance', () => {
             if (enabledVisibleCount >= 2) break;
           }
           // If page already shows Voting Phase, stop waiting for inputs
-          const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+          const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
           if (votingVisible) break;
           await page.waitForTimeout(500);
         }
@@ -119,7 +119,7 @@ test.describe('Operation Assignment Acceptance', () => {
             {
               const ackDeadline = Date.now() + 20000;
               while (Date.now() < ackDeadline) {
-                const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+                const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
                 if (votingVisible) break;
                 const disabled = await submitBtn.isDisabled().catch(() => false);
                 const visible = await submitBtn.isVisible().catch(() => false);
@@ -140,7 +140,7 @@ test.describe('Operation Assignment Acceptance', () => {
           }
           // Fallback: not enough checkboxes to pick two, try acceptance directly
           const acceptFallback2 = phaseContent.getByTestId('accept-assignment-btn');
-          if (await acceptFallback2.isVisible().catch(() => false)) {
+            if (await acceptFallback2.isVisible().catch(() => false)) {
             await expect(acceptFallback2).toBeEnabled();
             await acceptFallback2.click();
             await expect(acceptFallback2).toBeDisabled({ timeout: 10000 }).catch(async () => {
@@ -186,7 +186,7 @@ test.describe('Operation Assignment Acceptance', () => {
           {
             const ackDeadline = Date.now() + 20000;
             while (Date.now() < ackDeadline) {
-              const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+              const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
               if (votingVisible) break;
               const disabled = await submitBtn.isDisabled().catch(() => false);
               const visible = await submitBtn.isVisible().catch(() => false);
@@ -213,19 +213,19 @@ test.describe('Operation Assignment Acceptance', () => {
           await expect(acceptBtn).toBeEnabled({ timeout: 10000 });
           await acceptBtn.click();
           // Wait until accept is disabled/hidden (acknowledged)
-          await expect(acceptBtn).toBeDisabled({ timeout: 10000 }).catch(async () => {
-            await expect(acceptBtn).toBeHidden({ timeout: 10000 });
+          await expect(acceptBtn).toBeDisabled({ timeout: 3000 }).catch(async () => {
+            await expect(acceptBtn).toBeHidden({ timeout: 3000 });
           });
         }
       }
 
       // After everyone accepted, the server should transition to Voting phase
       // Allow extra time for network and socket scheduling.
-      await Promise.all(pages.map(page => page.getByText('Voting Phase').waitFor({ timeout: 30000 })));
+      await Promise.all(pages.map(page => page.getByRole('heading', { name: /Voting Phase/i }).waitFor({ timeout: 30000 })));
 
       // Assert that the voting header is present on each page
       for (const page of pages) {
-        await expect(page.getByText('Voting Phase')).toBeVisible({ timeout: 30000 });
+        await expect(page.getByRole('heading', { name: /Voting Phase/i })).toBeVisible({ timeout: 30000 });
       }
 
     } finally {

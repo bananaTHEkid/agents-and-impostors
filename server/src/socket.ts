@@ -428,11 +428,17 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           }
 
           if (playerSocketId) {
-            // Online: assign and wait for their acceptance to proceed
+            // Online: assign and set the turn to this candidate
             io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
             await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
             console.log(`Sent operation-assigned to ${candidate} (socket ${playerSocketId})`);
-            advanceTurn(lobbyId);
+            try {
+              const state = turnStateByLobby[lobbyId];
+              if (state) {
+                state.turnIndex = idx;
+                io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: candidate, turnIndex: idx });
+              }
+            } catch { /* ignore */ }
             assignedOnlineNext = true;
             break;
           } else {
@@ -537,8 +543,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.emit('operation-info', { operation: 'confession', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true });
         socket.emit('game-message', { type: 'system', text: `${confessor.username} used ${'confession'}` });
-        // Advance turn after successful operation
-        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+        // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Progress operation assignments: find next unassigned player and assign
         try {
@@ -568,7 +573,13 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               if (playerSocketId) {
                 io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
                 await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
-                advanceTurn(lobbyId);
+                try {
+                  const state = turnStateByLobby[lobbyId];
+                  if (state) {
+                    state.turnIndex = idx;
+                    io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: candidate, turnIndex: idx });
+                  }
+                } catch { /* ignore */ }
                 assignedOnlineNext = true;
                 break;
               } else {
@@ -668,8 +679,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.emit('operation-info', { operation: 'defector', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true, message: `You've chosen ${targetPlayer} as your target. Their team will be switched during the next phase.` });
         socket.emit('game-message', { type: 'system', text: `${defector.username} used ${'defector'}` });
-        // Advance turn after successful operation
-        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+        // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat defector submission as acceptance and progress assignment similar to other operations
         try {
@@ -715,7 +725,13 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               if (playerSocketId) {
                 io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
                 await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
-                advanceTurn(lobbyId);
+                try {
+                  const state = turnStateByLobby[lobbyId];
+                  if (state) {
+                    state.turnIndex = idx;
+                    io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: candidate, turnIndex: idx });
+                  }
+                } catch { /* ignore */ }
                 assignedOnlineNext = true;
                 break;
               } else {
@@ -818,9 +834,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         socket.emit('operation-used', { success: true, message: 'Operation submitted.' });
         io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} used operation ${operation}` });
-
-        // Advance turn after operation
-        try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+        // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat operation submission as acceptance for client-choice operations.
         // Mark the emitter's assignment as accepted and transition to voting if all accepted.
@@ -867,7 +881,13 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               if (playerSocketId) {
                 io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
                 await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
-                advanceTurn(lobbyId);
+                try {
+                  const state = turnStateByLobby[lobbyId];
+                  if (state) {
+                    state.turnIndex = idx;
+                    io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: candidate, turnIndex: idx });
+                  }
+                } catch { /* ignore */ }
                 assignedOnlineNext = true;
                 break;
               } else {

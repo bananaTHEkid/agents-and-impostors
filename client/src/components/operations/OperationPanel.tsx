@@ -26,14 +26,18 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
       // (payload.accepted === true) use the dedicated `accept-assignment` event so
       // server-side handlers can treat it distinctly.
       if (payload && (payload as any).accepted) {
+        // Emit and keep submitting=true until server acks with 'assignment-accepted'.
+        // GameRoom will mark operation.used on ack which permanently disables controls.
         socket.emit('accept-assignment', { lobbyCode, username });
-      } else {
-        const emitPayload = { lobbyCode, operation: operation.name, payload };
-        socket.emit(eventName, emitPayload);
+        return;
       }
+
+      const emitPayload = { lobbyCode, operation: operation.name, payload };
+      socket.emit(eventName, emitPayload);
     } catch (err) {
       console.error('Operation submit error', err);
     } finally {
+      // For non-accept flows, release submitting immediately; accept flows return earlier.
       setSubmitting(false);
     }
   };

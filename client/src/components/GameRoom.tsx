@@ -230,6 +230,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         setErrorMessage(data.message || "Failed to use operation.");
       }
     });
+    // Explicit acknowledgement for assignment acceptance; mark operation as used
+    socket.on('assignment-accepted', (_ack: { success: boolean }) => {
+      setMyOperation(prevOp => {
+        if (!prevOp) return prevOp;
+        return { ...prevOp, used: true } as PlayerOperation;
+      });
+    });
     // Receive confession reveal from another player
     socket.on('confession-received', (data: { type?: string; fromPlayer: string; theirTeam: 'agent' | 'impostor' | string }) => {
       const readableTeam = data.theirTeam === 'impostor' ? 'impostor' : (data.theirTeam === 'agent' ? 'agent' : String(data.theirTeam));
@@ -343,6 +350,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off("player-joined");
       socket.off("join-success");
       socket.off("error");
+      socket.off('assignment-accepted');
     };
   }, [socket, lobbyCode, username]);
 
