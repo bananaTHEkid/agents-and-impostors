@@ -5,7 +5,13 @@ test.describe('Operation Assignment Acceptance', () => {
   // Allow ample time for multi-user setup and phase transitions
   test.setTimeout(180000);
   test('All players accepting their operation moves the game to Voting phase', async ({ browser }) => {
-    const usernames = ['HostPlayer', 'Player2', 'Player3', 'Player4', 'Player5'];
+    const baseNames = ['HostPlayer', 'Player2', 'Player3', 'Player4', 'Player5'];
+    const runSuffix = `w${test.info().workerIndex}_${Date.now().toString(36).slice(-2)}`;
+    const usernames = baseNames.map(n => {
+      const candidate = `${n}_${runSuffix}`;
+      // Ensure <= 20 chars to satisfy validator
+      return candidate.length <= 20 ? candidate : candidate.slice(0, 20);
+    });
     const contexts = await Promise.all(usernames.map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map((c) => c.newPage()));
 
