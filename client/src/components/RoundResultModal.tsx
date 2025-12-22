@@ -36,8 +36,8 @@ const RoundResultModal: React.FC<RoundResultModalProps> = ({
       <Modal.Body>
         <div className="mb-4">
           <h4>Round Winner: 
-            <Badge bg={winner === 'agent' ? 'primary' : 'danger'} className="ms-2">
-              {winner === 'agent' ? 'Agents' : 'Impostors'}
+            <Badge bg={winner === 'agents' ? 'primary' : 'danger'} className="ms-2">
+              {winner === 'agents' ? 'Agents' : 'Impostors'}
             </Badge>
           </h4>
         </div>
