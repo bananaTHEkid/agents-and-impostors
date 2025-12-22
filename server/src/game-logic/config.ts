@@ -13,13 +13,14 @@ export const GAME_CONFIG = {
         {name: "infatuation", hidden: true, clientChooses: false},
         {name: "scapegoat", hidden: true, clientChooses: false},
         {name: "sleeper agent", hidden: true, clientChooses: false},
-        {name: "secret intel", hidden: true, clientChooses: false},
+        {name: "secret intel", hidden: false, clientChooses: false},
         {name: "secret tip", hidden: true, clientChooses: false},
         {name: "confession", hidden: false, clientChooses: true},
         {name: "old photographs", hidden: false, clientChooses: false},
         {name: "danish intelligence", hidden: false, clientChooses: true},
         {name: "anonymous tip", hidden: false, clientChooses: false},
-        {name: "defector", hidden: true, clientChooses: true},
+        {name: "unfortunate encounter", hidden: false, clientChooses: true},
+        {name: "spy transfer", hidden: false, clientChooses: true}
     ]
 };
 
@@ -497,7 +498,9 @@ export const OPERATION_CONFIG: Record<
                     message: "Not enough players for secret intel."
                 };
             }
-            const picked = otherPlayers.slice(0, 2);
+            // Pick two random distinct players (excluding self)
+            const shuffled = [...otherPlayers].sort(() => Math.random() - 0.5);
+            const picked = shuffled.slice(0, 2);
             return {
                 success: true,
                 message: "Your secret intel will reveal information about two players.",
@@ -527,14 +530,27 @@ export const OPERATION_CONFIG: Record<
                     );
                     
                     if (!target1 || !target2) continue;
-                    
-                    // Determine summary-only revelation (no per-player details)
-                    const oneOrMoreImpostors = target1.team === 'impostor' || target2.team === 'impostor';
+                    // Mirror danish intelligence: reveal if one or more impostors OR both agents
+                    const oneOrBothImpostors = target1.team === 'impostor' || target2.team === 'impostor';
                     const bothAgents = target1.team === 'agent' && target2.team === 'agent';
-                    const message = oneOrMoreImpostors
-                        ? 'One or more of these players are impostors.'
-                        : (bothAgents ? 'The players are agents.' : 'Intelligence is inconclusive.');
-                    info.revealed = { message };
+                    const shouldReveal = oneOrBothImpostors || bothAgents;
+
+                    if (shouldReveal) {
+                        const msg = oneOrBothImpostors
+                            ? `Out of ${info.targetPlayer1} and ${info.targetPlayer2}, one or more of them are impostors.`
+                            : `${info.targetPlayer1} and ${info.targetPlayer2} are both agents.`;
+                        info.revealed = {
+                            target1Name: info.targetPlayer1,
+                            target1Team: target1.team,
+                            target2Name: info.targetPlayer2,
+                            target2Team: target2.team,
+                            message: msg
+                        };
+                    } else {
+                        info.revealed = {
+                            message: "One is an impostor and one is an agent (no revelation)"
+                        };
+                    }
                     
                     await db.run(
                         "UPDATE players SET operation_info = ? WHERE lobby_id = ? AND username = ?",
@@ -542,6 +558,78 @@ export const OPERATION_CONFIG: Record<
                     );
                 } catch (error) {
                     console.error(`Error processing secret intel for player ${player.username}:`, error);
+                }
+            }
+        }
+    },
+    // UNFORTUNATE ENCOUNTER: Player chooses another; both receive same message summary
+    "unfortunate encounter": {
+        fields: ["targetPlayer"],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const possibleTargets = players.filter(p => p !== self);
+            return {
+                success: true,
+                message: "Choose a player to have an unfortunate encounter with.",
+                availablePlayers: possibleTargets
+            };
+        },
+        // No win condition changes; messaging handled at operation time
+        modifyWinCondition: async () => {}
+    },
+    // SPY TRANSFER: Player chooses another; swap associations silently
+    "spy transfer": {
+        fields: ["targetPlayer"],
+        types: [],
+        generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
+            const possibleTargets = players.filter(p => p !== self);
+            return {
+                success: true,
+                message: "Choose a player to secretly swap associations with.",
+                availablePlayers: possibleTargets
+            };
+        },
+        modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
+            const transferPlayers = await db.all(
+                "SELECT username, operation_info FROM players WHERE lobby_id = ? AND operation = 'spy transfer'",
+                [lobbyId]
+            );
+            for (const player of transferPlayers) {
+                if (!player.operation_info) continue;
+                try {
+                    const info = JSON.parse(player.operation_info);
+                    const target = info?.targetPlayer;
+                    if (!target || info?.transferApplied) continue;
+
+                    const emitterRow = await db.get(
+                        "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, player.username]
+                    );
+                    const targetRow = await db.get(
+                        "SELECT team FROM players WHERE lobby_id = ? AND username = ?",
+                        [lobbyId, target]
+                    );
+                    if (!emitterRow || !targetRow) continue;
+
+                    // Swap teams
+                    await db.run(
+                        "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
+                        [targetRow.team, lobbyId, player.username]
+                    );
+                    await db.run(
+                        "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
+                        [emitterRow.team, lobbyId, target]
+                    );
+
+                    // Mark applied and update in-memory map
+                    await db.run(
+                        "UPDATE players SET operation_info = json_patch(operation_info, ?) WHERE lobby_id = ? AND username = ?",
+                        [JSON.stringify({ transferApplied: true }), lobbyId, player.username]
+                    );
+                    teams[player.username] = targetRow.team;
+                    teams[target] = emitterRow.team;
+                } catch (err) {
+                    console.error(`Error processing spy transfer for player ${player.username}:`, err);
                 }
             }
         }

@@ -19,6 +19,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
   const [hasVoted, setHasVoted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
+  const [manualVote, setManualVote] = useState<string>('');
 
   // Listen for vote confirmation
   useEffect(() => {
@@ -54,14 +55,19 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
     };
   }, [socket]);
 
-  const handleVote = () => {
-    if (!selectedPlayer || !socket) return;
-    
+  const submitVote = (voteTarget: string) => {
+    if (!voteTarget || !socket) return;
     socket.emit('submit-vote', {
       lobbyCode,
       username: currentUsername,
-      vote: selectedPlayer
+      vote: voteTarget
     });
+  };
+
+  const handleVote = () => {
+    const target = manualVote?.trim() || selectedPlayer || '';
+    if (!target) return;
+    submitVote(target);
   };
 
   // Filter out eliminated players (would come from the game state)
@@ -104,7 +110,13 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                     key={player.username}
                     type="button"
                     disabled={disabled}
-                    onClick={() => !disabled && setSelectedPlayer(player.username)}
+                    onClick={() => {
+                      if (disabled) return;
+                      setSelectedPlayer(player.username);
+                      // Emit immediately on direct click (test expects this behavior)
+                      submitVote(player.username);
+                    }}
+                    aria-label={player.username}
                     className={
                       "w-full text-left flex items-center justify-between px-4 py-3 rounded-lg border " +
                       (selected ? "border-indigo-500 ring-2 ring-indigo-200 " : "border-gray-200 ") +
@@ -135,14 +147,24 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
               })}
             </div>
 
-            <button
-              type="button"
-              disabled={!selectedPlayer || hasVoted}
-              onClick={handleVote}
-              className={"w-full py-2 px-4 rounded-lg text-white font-medium " + (!selectedPlayer || hasVoted ? 'bg-indigo-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700')}
-            >
-              Submit Vote
-            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input
+                type="text"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300"
+                placeholder="Enter your vote or message..."
+                value={manualVote}
+                onChange={(e) => setManualVote(e.target.value)}
+                disabled={hasVoted}
+              />
+              <button
+                type="button"
+                disabled={(hasVoted || (!manualVote.trim() && !selectedPlayer))}
+                onClick={handleVote}
+                className={"w-full py-2 px-4 rounded-lg text-white font-medium " + ((hasVoted || (!manualVote.trim() && !selectedPlayer)) ? 'bg-indigo-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700')}
+              >
+                Submit
+              </button>
+            </div>
           </>
         )}
 

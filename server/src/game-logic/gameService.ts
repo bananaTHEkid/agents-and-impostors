@@ -442,7 +442,7 @@ export async function assignTeamsAndOperations(
 
     // Select operations (use metadata from GAME_CONFIG, ensure only available ops are used)
     const availableOps = GAME_CONFIG.OPERATIONS.filter(op => op.name in OPERATION_CONFIG);
-    const winConditionOpsSet = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector']);
+        const winConditionOpsSet = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
     const winConditionOps = availableOps.filter(op => winConditionOpsSet.has(op.name));
     const otherOps = availableOps.filter(op => !winConditionOpsSet.has(op.name));
 
@@ -529,7 +529,7 @@ export async function endRound(
 
     // Immediately remove per-game data so nothing persists between games.
     try {
-        await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+        const winConditionOps = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
         await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
         await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
     } catch (err) {
