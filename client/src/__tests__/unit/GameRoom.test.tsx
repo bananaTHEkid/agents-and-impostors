@@ -235,7 +235,7 @@ describe('GameRoom Component', () => {
     expect(mockSocket.off).toHaveBeenCalledWith('error');
   });
   
-  it('allows submitting votes through the form in voting phase', async () => {
+  it('allows submitting votes by clicking a player in voting phase', async () => {
     render(<GameRoom {...mockProps} />);
   
     // Set up the voting phase
@@ -243,20 +243,21 @@ describe('GameRoom Component', () => {
       await triggerSocketEvent('game-state', { phase: 'voting' });
     });
   
-    // Wait for the form to appear
-    const inputField = await screen.findByPlaceholderText('Enter your vote or message...');
-    expect(inputField).toBeInTheDocument();
-  
-    // Type into the input field and submit using userEvent for better simulation
-    const user = userEvent.setup();
+    // Provide players list so a clickable target exists
     await act(async () => {
-      await user.type(inputField, 'player1');
+      await triggerSocketEvent('player-list', { 
+        players: [
+          { username: 'player1', id: 'player-1' },
+          { username: 'testUser', id: 'player-3' }
+        ] 
+      });
     });
-    
-    // Submit the form
-    const submitButton = screen.getByText('Submit');
+
+    // Click on a player's button to submit vote immediately
+    const user = userEvent.setup();
+    const playerBtn = screen.getByRole('button', { name: 'player1' });
     await act(async () => {
-      await user.click(submitButton);
+      await user.click(playerBtn);
     });
   
     // Check the socket emit call was made

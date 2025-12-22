@@ -12,36 +12,25 @@ describe('OperationPanel', () => {
     socket: mockSocket,
   } as any;
 
-  it('disables inputs when it is NOT the player\'s turn', async () => {
-    const operation = { name: 'anonymous tip', info: { message: 'Say something' }, used: false } as any;
+  it('disables acceptance when it is NOT the player\'s turn', async () => {
+    const operation = { name: 'anonymous tip', info: { message: 'Tip' }, used: false } as any;
 
     render(<OperationPanel {...baseProps} operation={operation} isMyTurn={false} />);
 
-    // TextInputRenderer uses a textarea; it should be disabled
-    const textarea = await screen.findByPlaceholderText('Enter your message...');
-    expect(textarea).toBeDisabled();
-
-    const sendButton = screen.getByRole('button', { name: /send/i });
-    expect(sendButton).toBeDisabled();
+    const acceptBtn = await screen.findByTestId('accept-assignment-btn');
+    expect(acceptBtn).toBeDisabled();
   });
 
-  it('enables inputs when it IS the player\'s turn', async () => {
-    const operation = { name: 'anonymous tip', info: { message: 'Say something' }, used: false } as any;
+  it('enables acceptance when it IS the player\'s turn', async () => {
+    const operation = { name: 'anonymous tip', info: { message: 'Tip' }, used: false } as any;
 
     render(<OperationPanel {...baseProps} operation={operation} isMyTurn={true} />);
 
-    const textarea = await screen.findByPlaceholderText('Enter your message...');
-    expect(textarea).toBeEnabled();
-
-    const sendButton = screen.getByRole('button', { name: /send/i });
-    expect(sendButton).toBeDisabled(); // initially disabled until text entered
+    const acceptBtn = await screen.findByTestId('accept-assignment-btn');
+    expect(acceptBtn).toBeEnabled();
 
     const user = userEvent.setup();
-    await user.type(textarea, 'hello');
-    expect(sendButton).toBeEnabled();
-
-    // Emulate click and ensure socket.emit called with eventName 'operation-used'
-    await user.click(sendButton);
-    expect(mockSocket.emit).toHaveBeenCalled();
+    await user.click(acceptBtn);
+    expect(mockSocket.emit).toHaveBeenCalledWith('accept-assignment', expect.objectContaining({ lobbyCode: 'TESTLOBBY', username: 'testUser' }));
   });
 });
