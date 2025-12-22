@@ -670,6 +670,70 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.emit('game-message', { type: 'system', text: `${defector.username} used ${'defector'}` });
         // Advance turn after successful operation
         try { advanceTurn(lobbyId); } catch (e) { /* ignore */ }
+
+        // Treat defector submission as acceptance and progress assignment similar to other operations
+        try {
+          await db.run('UPDATE players SET operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, defector.username]);
+          const remainingUnaccepted = await db.get(
+            'SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_accepted = 0',
+            [lobbyId]
+          );
+          if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            console.log(`All assignments accepted (via defector) for lobby ${lobbyCode} (id: ${lobbyId}). Moved to VOTING phase.`);
+          }
+        } catch (acceptErr) {
+          console.error('Failed to mark acceptance after defector:', acceptErr);
+        }
+
+        // Progress operation assignments: find next unassigned player and assign
+        try {
+          const turnState = turnStateByLobby[lobbyId];
+          if (turnState) {
+            const currentIdx = turnState.order.indexOf(defector.username);
+            const order = turnState.order;
+            let assignedOnlineNext = false;
+            const playerOps = playerOperationsByLobby[lobbyId] || [];
+
+            for (let step = 1; step <= order.length; step++) {
+              const idx = (currentIdx + step) % order.length;
+              const candidate = order[idx];
+              const candidateRow = await db.get('SELECT operation_assigned FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              if (!candidateRow || candidateRow.operation_assigned) {
+                continue;
+              }
+
+              const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
+              const playerSocketId = connectionManager.getSocketId(candidate);
+
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              if (nextOpMeta?.name) {
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+              }
+
+              if (playerSocketId) {
+                io?.to(playerSocketId).emit('operation-assigned', { operation: nextOpMeta?.name });
+                await db.run('UPDATE players SET operation_assigned = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+                advanceTurn(lobbyId);
+                assignedOnlineNext = true;
+                break;
+              } else {
+                await db.run('UPDATE players SET operation_assigned = 1, operation_accepted = 1 WHERE lobby_id = ? AND username = ?', [lobbyId, candidate]);
+              }
+            }
+
+            if (!assignedOnlineNext) {
+              const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
+              if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+                await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+              }
+            }
+          }
+        } catch (progressErr) {
+          console.error('Failed to progress assignment after defector:', progressErr);
+        }
       } catch (error) {
         console.error('Error processing defector operation:', error);
         socket.emit('error', { message: 'Failed to process defector operation' });

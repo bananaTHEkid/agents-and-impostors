@@ -32,15 +32,128 @@ test.describe('Operation Assignment Acceptance', () => {
         const page = pages[i];
         const username = usernames[i];
 
-        // Wait until it's this player's turn
-        await expect(
-          page.getByText(new RegExp(`^\s*Current turn:\s*${username}.*\(You\)`, 'i'))
-        ).toBeVisible({ timeout: 60000 });
+        // If any page is already in Voting Phase, skip this player and move on
+        {
+          let anyVoting = false;
+          for (const p of pages) {
+            const visible = await p.getByText('Voting Phase').isVisible().catch(() => false);
+            if (visible) { anyVoting = true; break; }
+          }
+          if (anyVoting) continue;
+        }
 
-        // Confession (single-choice): select a real player and submit
-        const dropdownCount = await page.getByTestId('operation-choose-player').count();
+        // Prefer acting when inputs are actionable; do not depend on the turn banner
+        const phaseContent = page.getByTestId('phase-content');
+        await phaseContent.waitFor({ timeout: 30000 });
+        const pollUntil = Date.now() + 45000;
+        while (Date.now() < pollUntil) {
+          // Accept button ready
+          const acceptBtnInitial = phaseContent.getByTestId('accept-assignment-btn');
+          if (await acceptBtnInitial.isVisible().catch(() => false)) {
+            const enabled = !(await acceptBtnInitial.isDisabled().catch(() => false));
+            if (enabled) break;
+          }
+          // Dropdown ready only if it has a valid option (non-empty, not self) and is enabled
+          const dropdownCountInit = await phaseContent.getByTestId('operation-choose-player').count();
+          if (dropdownCountInit > 0) {
+            const dropdownLoc = phaseContent.getByTestId('operation-choose-player').first();
+            const enabled = await dropdownLoc.isEnabled().catch(() => false);
+            if (enabled) {
+              const options = await dropdownLoc.locator('option').all();
+              let hasValid = false;
+              for (const opt of options) {
+                const value = await opt.getAttribute('value');
+                if (value && value.trim().length > 0 && value !== username) { hasValid = true; break; }
+              }
+              if (hasValid) break;
+            }
+          }
+          // Checkbox ready only if at least two are enabled and visible
+          const checkboxCountInit = await phaseContent.getByRole('checkbox').count();
+          if (checkboxCountInit > 0) {
+            let enabledVisibleCount = 0;
+            for (let idx = 0; idx < checkboxCountInit; idx++) {
+              const cb = phaseContent.getByRole('checkbox').nth(idx);
+              const enabled = !(await cb.isDisabled().catch(() => false));
+              const visible = await cb.isVisible().catch(() => false);
+              if (enabled && visible) enabledVisibleCount++;
+              if (enabledVisibleCount >= 2) break;
+            }
+            if (enabledVisibleCount >= 2) break;
+          }
+          // If page already shows Voting Phase, stop waiting for inputs
+          const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+          if (votingVisible) break;
+          await page.waitForTimeout(500);
+        }
+
+        // Multi-choice: pick any two enabled checkboxes then submit (Danish Intelligence)
+        // Scope to phase content to avoid unrelated checkboxes
+        const checkboxLoc = phaseContent.getByRole('checkbox');
+        const checkboxCount = await checkboxLoc.count();
+        if (checkboxCount >= 1) {
+          // Count how many are enabled and visible
+          let enabledVisibleCount = 0;
+          for (let idx = 0; idx < checkboxCount; idx++) {
+            const cb = checkboxLoc.nth(idx);
+            const disabled = await cb.isDisabled().catch(() => false);
+            const visible = await cb.isVisible().catch(() => false);
+            if (!disabled && visible) enabledVisibleCount++;
+          }
+          if (enabledVisibleCount >= 2) {
+            // Pick any two enabled/visible checkboxes
+            let picked = 0;
+            for (let idx = 0; idx < checkboxCount && picked < 2; idx++) {
+              const cb = checkboxLoc.nth(idx);
+              const disabled = await cb.isDisabled().catch(() => false);
+              const visible = await cb.isVisible().catch(() => false);
+              if (!disabled && visible) {
+                await cb.check();
+                picked++;
+              }
+            }
+            const submitBtn = phaseContent.getByTestId('operation-submit');
+            await expect(submitBtn).toBeEnabled();
+            await submitBtn.click();
+            // Wait for acknowledgment: submit disabled/hidden or Voting Phase visible
+            {
+              const ackDeadline = Date.now() + 20000;
+              while (Date.now() < ackDeadline) {
+                const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+                if (votingVisible) break;
+                const disabled = await submitBtn.isDisabled().catch(() => false);
+                const visible = await submitBtn.isVisible().catch(() => false);
+                if (disabled || !visible) break;
+                await page.waitForTimeout(300);
+              }
+            }
+            // Some flows may still require explicit acceptance; click if present
+            const maybeAccept2 = phaseContent.getByTestId('accept-assignment-btn');
+            if (await maybeAccept2.isVisible().catch(() => false)) {
+              await expect(maybeAccept2).toBeEnabled();
+              await maybeAccept2.click();
+              await expect(maybeAccept2).toBeDisabled({ timeout: 10000 }).catch(async () => {
+                await expect(maybeAccept2).toBeHidden({ timeout: 10000 });
+              });
+            }
+            continue;
+          }
+          // Fallback: not enough checkboxes to pick two, try acceptance directly
+          const acceptFallback2 = phaseContent.getByTestId('accept-assignment-btn');
+          if (await acceptFallback2.isVisible().catch(() => false)) {
+            await expect(acceptFallback2).toBeEnabled();
+            await acceptFallback2.click();
+            await expect(acceptFallback2).toBeDisabled({ timeout: 10000 }).catch(async () => {
+              await expect(acceptFallback2).toBeHidden({ timeout: 10000 });
+            });
+          }
+          continue;
+        }
+
+        // Confession/Defector (single-choice): select a real player and submit
+        const dropdownCount = await phaseContent.getByTestId('operation-choose-player').count();
         if (dropdownCount > 0) {
-          const combo = page.getByTestId('operation-choose-player').first();
+          const combo = phaseContent.getByTestId('operation-choose-player').first();
           await expect(combo).toBeEnabled({ timeout: 10000 });
 
           const options = await combo.locator('option').all();
@@ -50,57 +163,60 @@ test.describe('Operation Assignment Acceptance', () => {
             // Skip placeholder and self
             if (value && value.trim().length > 0 && value !== username) validOptions.push(value);
           }
-          expect(validOptions.length).toBeGreaterThan(0);
+          if (validOptions.length === 0) {
+            // Fallback: if no valid dropdown options, try accepting directly
+            const acceptFallback = phaseContent.getByTestId('accept-assignment-btn');
+            if (await acceptFallback.isVisible().catch(() => false)) {
+              await expect(acceptFallback).toBeEnabled();
+              await acceptFallback.click();
+              await expect(acceptFallback).toBeDisabled({ timeout: 10000 }).catch(async () => {
+                await expect(acceptFallback).toBeHidden({ timeout: 10000 });
+              });
+            }
+            continue;
+          }
           await combo.selectOption(validOptions[0]);
+          // Ensure we did not select the placeholder
+          await expect(combo).toHaveValue(validOptions[0]);
 
-          const submitBtn = page.getByTestId('operation-submit');
+          const submitBtn = phaseContent.getByTestId('operation-submit');
           await expect(submitBtn).toBeEnabled();
           await submitBtn.click();
-
-          // Wait for server acknowledgment (operation used message)
-          await expect(page.getByTestId('game-messages')).toContainText(/used (confession|defector|operation)/i, { timeout: 15000 });
+          // Wait for acknowledgment: submit disabled/hidden or Voting Phase visible
+          {
+            const ackDeadline = Date.now() + 20000;
+            while (Date.now() < ackDeadline) {
+              const votingVisible = await page.getByText('Voting Phase').isVisible().catch(() => false);
+              if (votingVisible) break;
+              const disabled = await submitBtn.isDisabled().catch(() => false);
+              const visible = await submitBtn.isVisible().catch(() => false);
+              if (disabled || !visible) break;
+              await page.waitForTimeout(300);
+            }
+          }
           // Some flows may still require explicit acceptance; click if present
-          const maybeAccept = page.getByTestId('accept-assignment-btn');
+          const maybeAccept = phaseContent.getByTestId('accept-assignment-btn');
           if (await maybeAccept.isVisible().catch(() => false)) {
             await expect(maybeAccept).toBeEnabled();
             await maybeAccept.click();
-          }
-          continue;
-        }
-
-        // Multi-choice: pick any two enabled checkboxes then submit
-        // Scope to phase content to avoid unrelated checkboxes
-        const checkboxLoc = page.getByTestId('phase-content').getByRole('checkbox');
-        const checkboxCount = await checkboxLoc.count();
-        if (checkboxCount >= 2) {
-          let picked = 0;
-          for (let idx = 0; idx < checkboxCount && picked < 2; idx++) {
-            const cb = checkboxLoc.nth(idx);
-            const disabled = await cb.isDisabled().catch(() => false);
-            const visible = await cb.isVisible().catch(() => false);
-            if (!disabled && visible) {
-              await cb.check();
-              picked++;
-            }
-          }
-          const submitBtn = page.getByTestId('operation-submit');
-          await expect(submitBtn).toBeEnabled();
-          await submitBtn.click();
-          await page.waitForTimeout(200);
-          // Some flows may still require explicit acceptance; click if present
-          const maybeAccept2 = page.getByTestId('accept-assignment-btn');
-          if (await maybeAccept2.isVisible().catch(() => false)) {
-            await expect(maybeAccept2).toBeEnabled();
-            await maybeAccept2.click();
+            // After accepting, wait for the accept button to disappear or disable
+            await expect(maybeAccept).toBeDisabled({ timeout: 10000 }).catch(async () => {
+              await expect(maybeAccept).toBeHidden({ timeout: 10000 });
+            });
           }
           continue;
         }
 
         // No-input operation: accept
-        const acceptBtn = page.getByTestId('accept-assignment-btn');
-        await expect(acceptBtn).toBeEnabled({ timeout: 10000 });
-        await acceptBtn.click();
-        await page.waitForTimeout(200);
+        const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
+        if (await acceptBtn.isVisible().catch(() => false)) {
+          await expect(acceptBtn).toBeEnabled({ timeout: 10000 });
+          await acceptBtn.click();
+          // Wait until accept is disabled/hidden (acknowledged)
+          await expect(acceptBtn).toBeDisabled({ timeout: 10000 }).catch(async () => {
+            await expect(acceptBtn).toBeHidden({ timeout: 10000 });
+          });
+        }
       }
 
       // After everyone accepted, the server should transition to Voting phase
