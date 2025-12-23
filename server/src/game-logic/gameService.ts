@@ -373,7 +373,9 @@ export async function generateOperationInfo(
         // If generator provides `availablePlayers`, pick appropriate fields server-side
         // based on `config.fields` so players cannot change them at assignment time.
         try {
-            if (generatedInfo.availablePlayers && Array.isArray(generatedInfo.availablePlayers) && config.fields && config.fields.length > 0) {
+            const opMeta = GAME_CONFIG.OPERATIONS.find(o => o.name === operationName);
+            const clientChooses = !!opMeta?.clientChooses;
+            if (!clientChooses && generatedInfo.availablePlayers && Array.isArray(generatedInfo.availablePlayers) && config.fields && config.fields.length > 0) {
                 const available = generatedInfo.availablePlayers.filter((p: string) => p !== player);
                 // Helper to pick unique random values
                 const pickRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];

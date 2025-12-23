@@ -550,8 +550,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-room">
-      <div className="w-full h-full bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div className="min-h-screen w-full overflow-y-auto flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-room">
+      <div className="w-full bg-white rounded-2xl shadow-xl">
         {/* Header with background */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-4 px-6">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
