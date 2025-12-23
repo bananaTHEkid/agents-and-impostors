@@ -2,3 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure consistent full-height layout across browsers & headless */
+html, body, #root {
+	height: 100%;
+}
+body {
+	overflow-y: auto;
+}
+

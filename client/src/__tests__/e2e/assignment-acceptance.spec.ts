@@ -14,6 +14,8 @@ test.describe('Operation Assignment Acceptance', () => {
     });
     const contexts = await Promise.all(usernames.map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map((c) => c.newPage()));
+    // Ensure a generous viewport height to avoid header clipping in headless
+    await Promise.all(pages.map((p) => p.setViewportSize({ width: 1280, height: 900 })));
 
     try {
       const hostPage = pages[0];
@@ -32,6 +34,8 @@ test.describe('Operation Assignment Acceptance', () => {
       await hostPage.getByTestId('start-game-button').click();
       // Wait for Operation Assignment Phase to be visible for the host
       await hostPage.getByRole('heading', { name: /Operation Assignment Phase/i }).waitFor({ timeout: 30000 });
+      // Scroll to top to ensure header and phase content are in view
+      await hostPage.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
 
       // Each player accepts their assignment when it's their turn
       for (let i = 0; i < pages.length; i++) {
@@ -51,6 +55,7 @@ test.describe('Operation Assignment Acceptance', () => {
         // Prefer acting when inputs are actionable; do not depend on the turn banner
         const phaseContent = page.getByTestId('phase-content');
         await phaseContent.waitFor({ timeout: 30000 });
+        await phaseContent.scrollIntoViewIfNeeded();
         const pollUntil = Date.now() + 45000;
         while (Date.now() < pollUntil) {
           // Accept button ready

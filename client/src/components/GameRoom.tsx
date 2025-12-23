@@ -595,8 +595,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             {/* Game content area */}
             <div className="lg:col-span-2">
               <div
-                className="game-messages p-4 bg-gray-50 rounded-xl mb-6 shadow-sm"
-                style={{ height: "350px", overflowY: "auto" }}
+                className="game-messages p-4 bg-gray-50 rounded-xl mb-6 shadow-sm max-h-[55vh] md:max-h-[60vh] overflow-y-auto"
                 data-testid="game-messages"
               >
                 <div className="flex items-center gap-2 mb-4">
@@ -638,9 +637,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             </div>
 
             {/* Player info sidebar */}
-            <div>
+            <div className="min-h-0">
               <GameInfo className="mb-6" />
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-h-[60vh] md:max-h-[70vh] overflow-y-auto">
                 <div className="bg-indigo-50 p-4 border-b border-indigo-100">
                   <div className="flex items-center gap-2">
                     <FiUsers className="text-indigo-600 text-xl" />
