@@ -314,8 +314,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
   // Add debug log before rendering
   console.log('Rendering GameLobby with players:', players);
   return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-lobby">
-        <div className="w-full h-full bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div className="min-h-screen w-screen overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-lobby">
+        <div className="max-w-3xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
           {/* Header mit Hintergrund */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-6 px-8">
             <h2 className="text-3xl font-bold text-white text-center">Spiel-Lobby</h2>

@@ -306,16 +306,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
 
   return (
     <div
-      className="min-h-screen flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6"
+      className="min-h-screen w-screen overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6"
       data-testid="landing-page"
     >
-      <div className="w-full h-full bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div className="max-w-xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header with background */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-6 px-8">
           <h2 className="text-3xl font-bold text-white text-center">Triple Game</h2>
         </div>
 
-        <div className="p-4 md:p-8 max-w-3xl mx-auto">
+        <div className="p-4 md:p-8">
           <CardContent className="space-y-6">
             <div className="space-y-2 text-center mb-8">
               <h3 className="text-2xl font-bold text-gray-800">Welcome to Triple</h3>

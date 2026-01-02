@@ -15,7 +15,7 @@ test.describe('Operation Assignment Acceptance', () => {
     const contexts = await Promise.all(usernames.map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map((c) => c.newPage()));
     // Ensure a generous viewport height to avoid header clipping in headless
-    await Promise.all(pages.map((p) => p.setViewportSize({ width: 1280, height: 900 })));
+    await Promise.all(pages.map((p) => p.setViewportSize({ width: 1920, height: 1080 })));
 
     try {
       const hostPage = pages[0];
