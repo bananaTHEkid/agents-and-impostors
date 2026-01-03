@@ -132,7 +132,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                       {votedPlayers.has(player.username) && (
                         <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">Abgestimmt</span>
                       )}
-                      {player.team && (
+                      {import.meta.env.DEV && player.team && (
                         <span className={"inline-flex items-center text-xs font-medium px-2 py-1 rounded-full border " + (player.team === 'agent' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100')}>
                           {player.team === 'agent' ? 'Agent' : 'Hochstapler'}
                         </span>
