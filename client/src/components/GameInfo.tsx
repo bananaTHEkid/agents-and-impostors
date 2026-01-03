@@ -34,6 +34,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
   const [team, setTeam] = useState<string | null>(null);
   const [opAccepted, setOpAccepted] = useState<boolean>(false);
+  const [confessionNotice, setConfessionNotice] = useState<{ fromPlayer: string; theirTeam: 'agent' | 'impostor' | string } | null>(null);
   const username: string | null = sessionStorage.getItem('username');
 
   useEffect(() => {
@@ -90,6 +91,17 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         if (data && data.success) setOpAccepted(true);
       });
 
+      // Receive confession notification: inform target of confessor's team
+      socket.on('confession-received', (info: { type?: string; fromPlayer: string; theirTeam: 'agent' | 'impostor' | string }) => {
+        try {
+          if (info && info.fromPlayer && info.theirTeam) {
+            setConfessionNotice({ fromPlayer: info.fromPlayer, theirTeam: info.theirTeam });
+          }
+        } catch (_) {
+          // ignore
+        }
+      });
+
       socket.on('player-joined', (data: PlayerJoinedData) => {
         console.log(`${data.username} joined the game.`);
       });
@@ -109,6 +121,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         socket.off('operation-used');
         socket.off('game-message');
         socket.off('assignment-accepted');
+        socket.off('confession-received');
       };
     }
   }, [socket, username]);
@@ -119,17 +132,17 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   const opShortDesc = (op?: string | null) => {
     const name = (op || '').toLowerCase();
     const map: Record<string, string> = {
-      'confession': 'Reveal your team to a selected player.',
-      'defector': 'Convert a selected player to the opposite team.',
-      'danish intelligence': 'Investigate two players for matching affiliations.',
-      'secret intel': 'Receive intel indicating if both or one are impostors.',
-      'old photographs': 'Reveal whether two players are on the same team.',
-      'grudge': 'You win if your grudge target is eliminated.',
-      'infatuation': 'You win if your chosen player wins.',
-      'sleeper agent': 'Your true team changes at resolution.',
-      'scapegoat': 'You only win if you are voted out.',
-      'anonymous tip': 'Get a tip about a player’s team.',
-      'secret tip': 'Learn a single player’s affiliation.'
+      'confession': 'Gib dein Team einem ausgewählten Spieler bekannt.',
+      'defector': 'Wandle einen ausgewählten Spieler zum gegnerischen Team um.',
+      'danish intelligence': 'Untersuche zwei Spieler auf gleiche Zugehörigkeit.',
+      'secret intel': 'Erhalte Hinweise, ob beide oder nur einer Hochstapler sind.',
+      'old photographs': 'Zeige, ob zwei Spieler im selben Team sind.',
+      'grudge': 'Du gewinnst, wenn dein Groll-Ziel eliminiert wird.',
+      'infatuation': 'Du gewinnst, wenn der von dir gewählte Spieler gewinnt.',
+      'sleeper agent': 'Dein wahres Team ändert sich bei der Auswertung.',
+      'scapegoat': 'Du gewinnst nur, wenn du herausgewählt wirst.',
+      'anonymous tip': 'Erhalte einen Hinweis über das Team eines Spielers.',
+      'secret tip': 'Erfahre die Zugehörigkeit eines einzelnen Spielers.'
     };
     return map[name] || '';
   };
@@ -146,6 +159,14 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
           <div className="mb-3">
             <div className={`${team === 'impostor' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'} p-3 rounded-lg border text-center`}>
               <span className="font-medium">Du bist ein {team === 'impostor' ? 'Hochstapler' : 'Agent'}.</span>
+            </div>
+          </div>
+        )}
+
+        {confessionNotice && (
+          <div className="mb-3">
+            <div className="p-3 rounded-lg border text-center bg-indigo-50 text-indigo-700 border-indigo-100">
+              <span className="font-medium">Dir wurde die Zugehörigkeit von {confessionNotice.fromPlayer} gebeichtet: {confessionNotice.theirTeam === 'impostor' ? 'Hochstapler' : 'Agent'}.</span>
             </div>
           </div>
         )}

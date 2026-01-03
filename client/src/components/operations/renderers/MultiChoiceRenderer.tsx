@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form } from 'react-bootstrap';
 import type { OperationRendererProps } from '@/types';
 
 const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, username, disabled, onSubmit }) => {
@@ -54,7 +54,14 @@ const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, user
           />
         ))}
       </div>
-      <Button data-testid="operation-submit" type="submit" disabled={disabled || selectedCount !== 2}>Senden</Button>
+      <button
+        data-testid="operation-submit"
+        type="submit"
+        disabled={disabled || selectedCount !== 2}
+        className="inline-flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Bestätigen
+      </button>
       {options.length < 2 && (
         <div className="text-muted small mt-2">Nicht genügend Spieler verfügbar, um zwei Ziele auszuwählen.</div>
       )}

@@ -66,9 +66,9 @@ class ErrorBoundary extends Component<Props, State> {
                   d="M12 9v2m0 4v2m0 4v2M12 3a9 9 0 100 18 9 9 0 000-18z"
                 />
               </svg>
-              <AlertTitle>Oops! Something went wrong</AlertTitle>
+              <AlertTitle>Ups! Etwas ist schiefgelaufen</AlertTitle>
               <AlertDescription>
-                {this.state.error?.message || 'An unexpected error occurred'}
+                {this.state.error?.message || 'Ein unerwarteter Fehler ist aufgetreten'}
               </AlertDescription>
             </Alert>
 
@@ -90,13 +90,13 @@ class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleReset}
                 className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
               >
-                Try Again
+                Erneut versuchen
               </button>
               <button
                 onClick={() => window.location.href = '/'}
                 className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors"
               >
-                Go Home
+                Zur Startseite
               </button>
             </div>
 

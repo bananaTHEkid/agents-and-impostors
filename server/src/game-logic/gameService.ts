@@ -34,10 +34,10 @@ export async function validateVote(
         `, [lobbyId]);
 
         if (!lobby) {
-            return { isValid: false, error: "Lobby not found" };
+            return { isValid: false, error: "Lobby nicht gefunden" };
         }
         if (lobby.phase !== 'voting') { // Direct use of GamePhase.VOTING might be better if available
-            return { isValid: false, error: "Voting is not currently allowed" };
+            return { isValid: false, error: "Abstimmen ist derzeit nicht erlaubt" };
         }
 
         const voterPlayer = await db.get(`
@@ -46,10 +46,10 @@ export async function validateVote(
             WHERE lobby_id = ? AND username = ?
         `, [lobbyId, voter]);
         if (!voterPlayer) {
-            return { isValid: false, error: "Voter not found in lobby" };
+            return { isValid: false, error: "Wähler in Lobby nicht gefunden" };
         }
         if (voterPlayer.eliminated === 1) {
-            return { isValid: false, error: "Eliminated players cannot vote" };
+            return { isValid: false, error: "Ausgeschiedene Spieler können nicht abstimmen" };
         }
 
         const targetPlayer = await db.get(`
@@ -58,10 +58,10 @@ export async function validateVote(
             WHERE lobby_id = ? AND username = ?
         `, [lobbyId, target]);
         if (!targetPlayer) {
-            return { isValid: false, error: "Target player not found in lobby" };
+            return { isValid: false, error: "Zielspieler in Lobby nicht gefunden" };
         }
         if (voter === target) {
-            return { isValid: false, error: "You cannot vote for yourself" };
+            return { isValid: false, error: "Du kannst nicht für dich selbst abstimmen" };
         }
 
         const existingVote = await db.get(`
@@ -70,15 +70,15 @@ export async function validateVote(
             WHERE lobby_id = ? AND voter = ?
         `, [lobbyId, voter]);
         if (existingVote) {
-            return { isValid: false, error: "You have already voted this round" };
+            return { isValid: false, error: "Du hast in dieser Runde bereits abgestimmt" };
         }
         if (targetPlayer.eliminated === 1) {
-            return { isValid: false, error: "Cannot vote for an eliminated player" };
+            return { isValid: false, error: "Du kannst nicht für einen ausgeschiedenen Spieler abstimmen" };
         }
         return { isValid: true };
     } catch (error) {
         console.error("Fehler bei der Validierung der Stimme:", error);
-        return { isValid: false, error: "Internal server error during vote validation" };
+        return { isValid: false, error: "Interner Serverfehler bei der Stimmvalidierung" };
     }
 }
 
@@ -105,7 +105,7 @@ export async function recordVote(
             `, [lobbyId, voter, roundNumber]);
 
             if (existingVote) {
-                throw new Error("Vote already recorded for this player this round");
+                throw new Error("Stimme für diesen Spieler in dieser Runde bereits aufgezeichnet");
             }
 
             // Record the vote
@@ -443,8 +443,13 @@ export async function assignTeamsAndOperations(
     agents.forEach(player => teams[player] = "agent");
 
     // Select operations (use metadata from GAME_CONFIG, ensure only available ops are used)
-    const availableOps = GAME_CONFIG.OPERATIONS.filter(op => op.name in OPERATION_CONFIG);
-        const winConditionOpsSet = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
+    const baseAvailableOps = GAME_CONFIG.OPERATIONS.filter(op => op.name in OPERATION_CONFIG);
+    // With exactly 5 players, exclude operations that change team associations
+    const teamChangingOps = new Set(['defector', 'sleeper agent', 'spy transfer']);
+    const availableOps = players.length === 5
+        ? baseAvailableOps.filter(op => !teamChangingOps.has(op.name))
+        : baseAvailableOps;
+    const winConditionOpsSet = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
     const winConditionOps = availableOps.filter(op => winConditionOpsSet.has(op.name));
     const otherOps = availableOps.filter(op => !winConditionOpsSet.has(op.name));
 

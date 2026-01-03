@@ -37,9 +37,9 @@ describe('GameRoom Component', () => {
     });
   });
 
-  it('renders game room with lobby code', () => {
+  it('renders game room header', () => {
     render(<GameRoom {...mockProps} />);
-    expect(screen.getByText('Triple Game')).toBeInTheDocument();
+    expect(screen.getByText('Triple Spiel')).toBeInTheDocument();
   });
 
   it('handles team assignment', async () => {
@@ -60,10 +60,9 @@ describe('GameRoom Component', () => {
       await triggerSocketEvent('team-assignment', { team: 'agent' });
     });
 
-    // Wait for the message to appear in game messages
+    // Check that phase indicates team assignment
     await waitFor(() => {
-      const gameMessages = screen.getByTestId('game-messages');
-      expect(gameMessages).toHaveTextContent('Teams have been assigned!');
+      expect(screen.getByText(/Phase:\s*team_assignment/i)).toBeInTheDocument();
     });
   });
 
@@ -85,31 +84,15 @@ describe('GameRoom Component', () => {
       await triggerSocketEvent('phase-change', { phase: 'voting', message: 'Voting phase has begun' });
     });
 
-    // Wait for the message to appear in game messages
+    // Check that phase indicates voting
     await waitFor(() => {
-      const gameMessages = screen.getByTestId('game-messages');
-      expect(gameMessages).toHaveTextContent('Voting phase has begun');
+      expect(screen.getByText(/Phase:\s*voting/i)).toBeInTheDocument();
+      // Voting Phase heading exists via aria-label
+      expect(screen.getByRole('heading', { name: /Voting Phase/i })).toBeInTheDocument();
     });
   });
 
-  it('handles operation assignment', async () => {
-    render(<GameRoom {...mockProps} />);
-
-    // Wait for socket event registration
-    await waitFor(() => {
-      expect(mockSocket.on).toHaveBeenCalledWith('operation-assigned', expect.any(Function));
-    });
-
-    // Trigger operation assignment event
-    await act(async () => {
-      await triggerSocketEvent('operation-assigned', { operation: 'secret_agent' });
-    });
-
-    await waitFor(() => {
-      const gameMessages = screen.getByTestId('game-messages');
-      expect(gameMessages).toHaveTextContent('Operation assigned: secret_agent');
-    });
-  });
+  // Removed: Spielnachrichten logging has been deleted; operation assignment no longer logs to UI
 
   it('displays game results', async () => {
     render(<GameRoom {...mockProps} />);
@@ -130,8 +113,9 @@ describe('GameRoom Component', () => {
     });
 
     await waitFor(() => {
-      const gameMessages = screen.getByTestId('game-messages');
-      expect(gameMessages).toHaveTextContent('Game has ended. Check results!');
+      // Phase set to completed and results section renders
+      expect(screen.getByText(/Phase:\s*completed/i)).toBeInTheDocument();
+      expect(screen.getByText('Results:')).toBeInTheDocument();
     });
   });
 
@@ -193,14 +177,11 @@ describe('GameRoom Component', () => {
           { username: 'player2', id: 'player-2' }
         ] 
       },
-      'game-message': { type: 'system', text: 'Test message' },
       'game-error': { message: 'Test error' },
       'game-started': { phase: 'team_assignment', message: 'Game started' },
       'phase-change': { phase: 'team_assignment', message: 'Teams are being assigned' },
       'team-assignment': { team: 'agent' },
       'operation-assigned': { operation: 'secret_agent' },
-      'player-voted': { username: 'player1' },
-      'vote-submitted': { username: 'player1' },
       'game-results': { 
         results: [
           { username: 'player1', team: 'agent', win_status: 'won' },
@@ -221,14 +202,11 @@ describe('GameRoom Component', () => {
     // Verify socket cleanup
     expect(mockSocket.off).toHaveBeenCalledWith('game-state');
     expect(mockSocket.off).toHaveBeenCalledWith('player-list');
-    expect(mockSocket.off).toHaveBeenCalledWith('game-message');
     expect(mockSocket.off).toHaveBeenCalledWith('game-error');
     expect(mockSocket.off).toHaveBeenCalledWith('game-started');
     expect(mockSocket.off).toHaveBeenCalledWith('phase-change');
     expect(mockSocket.off).toHaveBeenCalledWith('team-assignment');
     expect(mockSocket.off).toHaveBeenCalledWith('operation-assigned');
-    expect(mockSocket.off).toHaveBeenCalledWith('player-voted');
-    expect(mockSocket.off).toHaveBeenCalledWith('vote-submitted');
     expect(mockSocket.off).toHaveBeenCalledWith('game-results');
     expect(mockSocket.off).toHaveBeenCalledWith('player-joined');
     expect(mockSocket.off).toHaveBeenCalledWith('join-success');

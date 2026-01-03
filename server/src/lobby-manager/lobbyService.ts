@@ -14,7 +14,7 @@ export const generateLobbyCode = (): string => {
 export async function createLobby(username: string): Promise<{ lobbyId: string; lobbyCode: string }> {
     // Validate username before creating lobby
     if (!isValidUsername(username)) {
-        throw new Error("Invalid username. Must be 2-20 characters, alphanumeric and underscores only.");
+        throw new Error("Ungültiger Benutzername. 2-20 Zeichen, nur alphanumerisch und Unterstriche erlaubt.");
     }
 
     const db = getDB();
@@ -53,25 +53,25 @@ export async function joinLobby(
 
     if (!lobby) {
         console.log(`[joinLobby] Keine Lobby für Code gefunden: ${lobbyCode} (normalisiert: ${normalizedCode})`);
-        return { success: false, error: "Lobby does not exist" };
+        return { success: false, error: "Lobby existiert nicht" };
     }
 
     const lobbyId = lobby.id;
 
     const playersInLobby = await db.all("SELECT * FROM players WHERE lobby_id = ?", [lobbyId]);
     if (playersInLobby.length >= GAME_CONFIG.MAX_PLAYERS) {
-        return { success: false, error: `Lobby is full. Maximum ${GAME_CONFIG.MAX_PLAYERS} players allowed.` };
+        return { success: false, error: `Lobby ist voll. Maximal ${GAME_CONFIG.MAX_PLAYERS} Spieler erlaubt.` };
     }
 
     if (lobby.status !== 'waiting') {
-        return { success: false, error: "Game has already started" };
+        return { success: false, error: "Spiel hat bereits begonnen" };
     }
 
     // Check if username is already in THIS specific lobby
     // Username uniqueness is only enforced within a lobby, not globally
     const existingPlayerThisLobby = playersInLobby.find(p => p.username === username);
     if (existingPlayerThisLobby) {
-        return { success: false, error: "This username is already taken in this lobby. Please choose a different name." };
+        return { success: false, error: "Dieser Benutzername ist in dieser Lobby bereits vergeben. Bitte wähle einen anderen Namen." };
     }
 
 
@@ -91,7 +91,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
         // First verify the lobby exists
         const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
         if (!lobby) {
-            return { success: false, error: "Lobby not found" };
+            return { success: false, error: "Lobby nicht gefunden" };
         }
         
         const lobbyId = lobby.id;
@@ -103,7 +103,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
         );
 
         if (!player) {
-            return { success: false, error: "Player not found in lobby" };
+            return { success: false, error: "Spieler in Lobby nicht gefunden" };
         }
 
         // Delete the player
@@ -114,7 +114,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
 
         // Verify deletion was successful
         if (deleteResult.changes === 0) {
-            return { success: false, error: "Failed to remove player from lobby" };
+            return { success: false, error: "Spieler konnte nicht aus der Lobby entfernt werden" };
         }
 
         // Check remaining players
@@ -131,7 +131,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
         return { success: true, lobbyClosed: false };
     } catch (error) {
         console.error("Fehler in leaveLobby:", error);
-        return { success: false, error: "Database error occurred" };
+        return { success: false, error: "Datenbankfehler aufgetreten" };
     }
 }
 
@@ -142,7 +142,7 @@ export async function getLobbyPlayers(lobbyCode: string): Promise<{ success: boo
     const lobby = await db.get("SELECT id FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
 
     if (!lobby) {
-        return { success: false, error: "Lobby not found" };
+        return { success: false, error: "Lobby nicht gefunden" };
     }
     const lobbyId = lobby.id;
     const players = await db.all("SELECT username FROM players WHERE lobby_id = ?", [lobbyId]);

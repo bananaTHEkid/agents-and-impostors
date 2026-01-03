@@ -32,10 +32,6 @@ test.describe('Operation Assignment Acceptance', () => {
 
       // Start the game as host
       await hostPage.getByTestId('start-game-button').click();
-      // Wait for Operation Assignment Phase to be visible for the host
-      await hostPage.getByRole('heading', { name: /Operation Assignment Phase/i }).waitFor({ timeout: 30000 });
-      // Scroll to top to ensure header and phase content are in view
-      await hostPage.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
 
       // Each player accepts their assignment when it's their turn
       for (let i = 0; i < pages.length; i++) {
@@ -46,7 +42,7 @@ test.describe('Operation Assignment Acceptance', () => {
         {
           let anyVoting = false;
           for (const p of pages) {
-            const visible = await p.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
+            const visible = await p.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
             if (visible) { anyVoting = true; break; }
           }
           if (anyVoting) continue;
@@ -92,8 +88,8 @@ test.describe('Operation Assignment Acceptance', () => {
             }
             if (enabledVisibleCount >= 2) break;
           }
-          // If page already shows Voting Phase, stop waiting for inputs
-          const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
+          // If page already shows Abstimmungsphase, stop waiting for inputs
+          const votingVisible = await page.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
           if (votingVisible) break;
           await page.waitForTimeout(500);
         }
@@ -128,9 +124,9 @@ test.describe('Operation Assignment Acceptance', () => {
             await submitBtn.click();
             // Wait for acknowledgment: submit disabled/hidden or Voting Phase visible
             {
-              const ackDeadline = Date.now() + 20000;
+              const ackDeadline = Date.now() + 20_000;
               while (Date.now() < ackDeadline) {
-                const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
+                const votingVisible = await page.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
                 if (votingVisible) break;
                 const disabled = await submitBtn.isDisabled().catch(() => false);
                 const visible = await submitBtn.isVisible().catch(() => false);
@@ -197,7 +193,7 @@ test.describe('Operation Assignment Acceptance', () => {
           {
             const ackDeadline = Date.now() + 20000;
             while (Date.now() < ackDeadline) {
-              const votingVisible = await page.getByRole('heading', { name: /Voting Phase/i }).isVisible().catch(() => false);
+              const votingVisible = await page.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
               if (votingVisible) break;
               const disabled = await submitBtn.isDisabled().catch(() => false);
               const visible = await submitBtn.isVisible().catch(() => false);
@@ -231,13 +227,13 @@ test.describe('Operation Assignment Acceptance', () => {
         }
       }
 
-      // After everyone accepted, the server should transition to Voting phase
+      // After everyone accepted, the server should transition to Abstimmungsphase
       // Allow extra time for network and socket scheduling.
-      await Promise.all(pages.map(page => page.getByRole('heading', { name: /Voting Phase/i }).waitFor({ timeout: 30000 })));
+      await Promise.all(pages.map(page => page.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).waitFor({ timeout: 10000 })));
 
       // Assert that the voting header is present on each page
       for (const page of pages) {
-        await expect(page.getByRole('heading', { name: /Voting Phase/i })).toBeVisible({ timeout: 30000 });
+        await expect(page.getByTestId('phase-content').getByText(/Stimme für den Spieler/i)).toBeVisible({ timeout: 10000 });
       }
 
     } finally {

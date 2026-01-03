@@ -8,13 +8,10 @@ test.describe('Landing Page', () => {
     // Validate page title
     await expect(page).toHaveTitle('Agent Game');
 
-    // Validate the main container
+    // Validate the main container and header
     const landingPageContainer = page.getByTestId('landing-page');
     await expect(landingPageContainer).toBeVisible();
-
-    // Validate welcome message
-    await expect(page.getByText('Welcome to Triple')).toBeVisible();
-    await expect(page.getByText('Join or create a game to get started')).toBeVisible();
+    await expect(page.getByText('Triple Game')).toBeVisible();
   });
 
   test('should show error when joining with empty lobbycode', async ({ page }) => {

@@ -125,18 +125,14 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                       </div>
                       <span className="font-medium text-gray-800">
                         {player.username}
-                        {player.username === currentUsername && <span className="text-gray-500 ml-1">(You)</span>}
+                        {player.username === currentUsername && <span className="text-gray-500 ml-1">(Du)</span>}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       {votedPlayers.has(player.username) && (
                         <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">Abgestimmt</span>
                       )}
-                      {import.meta.env.DEV && player.team && (
-                        <span className={"inline-flex items-center text-xs font-medium px-2 py-1 rounded-full border " + (player.team === 'agent' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100')}>
-                          {player.team === 'agent' ? 'Agent' : 'Hochstapler'}
-                        </span>
-                      )}
+                      {/* Team badges removed to avoid revealing associations on voting buttons */}
                     </div>
                   </button>
                 );

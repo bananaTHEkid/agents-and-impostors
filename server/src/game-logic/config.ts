@@ -48,16 +48,16 @@ export const OPERATION_CONFIG: Record<
             const selfTeam = teams[self];
             if (!selfTeam) {
                 console.warn(`Player ${self} has no team assigned for grudge operation.`);
-                return { message: "Could not determine your grudge target due to missing team information." };
+                return { message: "Dein Groll-Ziel konnte wegen fehlender Teaminformation nicht ermittelt werden." };
             }
             const opponents = players.filter(p => p !== self && teams[p] && teams[p] !== selfTeam);
             if (opponents.length === 0) {
-                return { message: "No specific grudge target could be identified from opposing teams." };
+                return { message: "Es konnte kein Groll-Ziel aus gegnerischen Teams ermittelt werden." };
             }
             const randomOpponent = opponents[Math.floor(Math.random() * opponents.length)];
             return {
                 grudgeTarget: randomOpponent,
-                message: `You have a grudge against ${randomOpponent}. You might want to focus your suspicions or actions towards them.`
+                message: `Du hegst einen Groll gegen ${randomOpponent}. Richte deine Verdachtsmomente oder Aktionen bevorzugt auf diese Person.`
             };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db, roundResult) => {
@@ -115,7 +115,7 @@ export const OPERATION_CONFIG: Record<
             const otherPlayers = players.filter(p => p !== self);
             if (otherPlayers.length === 0) {
                 return {
-                    message: "No valid target for infatuation found.",
+                    message: "Kein gültiges Ziel für Verliebtheit gefunden.",
                     success: false
                 };
             }
@@ -123,7 +123,7 @@ export const OPERATION_CONFIG: Record<
             return {
                 infatuationTarget,
                 targetTeam: teams[infatuationTarget],
-                message: `You are infatuated with ${infatuationTarget}. Your fate is tied to theirs - you will win only if they win!`,
+                message: `Du bist verliebt in ${infatuationTarget}. Dein Schicksal ist an diese Person gebunden — du gewinnst nur, wenn sie gewinnt!`,
                 success: true
             };
         },
@@ -186,7 +186,7 @@ export const OPERATION_CONFIG: Record<
                 console.warn(`Player ${self} has no team assigned for sleeper agent operation.`);
                 return {
                     success: false,
-                    message: "Could not determine your current team.",
+                    message: "Dein aktuelles Team konnte nicht bestimmt werden.",
                 };
             }
             const trueTeam = currentTeam === "agent" ? "impostor" : "agent";
@@ -195,7 +195,7 @@ export const OPERATION_CONFIG: Record<
                 displayedTeam: currentTeam,
                 trueTeam: trueTeam,
                 teamSwitched: false,
-                message: `You appear to be an ${currentTeam.toUpperCase()}, but you're actually an ${trueTeam.toUpperCase()}!`,
+                message: `Du scheinst ein ${currentTeam === 'impostor' ? 'Hochstapler' : 'Agent'} zu sein, bist in Wahrheit jedoch ein ${trueTeam === 'impostor' ? 'Hochstapler' : 'Agent'}!`,
             };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
@@ -230,7 +230,7 @@ export const OPERATION_CONFIG: Record<
             const otherPlayers = players.filter(p => p !== self);
             if (otherPlayers.length === 0) return null;
             const randomPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
-            return { revealedPlayer: randomPlayer, team: teams[randomPlayer], message: `You received an anonymous tip: ${randomPlayer} is a ${teams[randomPlayer] === 'impostor' ? 'impostor' : 'agent'}.` };
+            return { revealedPlayer: randomPlayer, team: teams[randomPlayer], message: `Du hast einen anonymen Hinweis erhalten: ${randomPlayer} ist ein ${teams[randomPlayer] === 'impostor' ? 'Hochstapler' : 'Agent'}.` };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
             try {
@@ -266,7 +266,7 @@ export const OPERATION_CONFIG: Record<
             const otherPlayers = players.filter(p => p !== self);
             return {
                 success: true,
-                message: "Choose two players to investigate with your danish intelligence.",
+                message: "Wähle zwei Spieler für eine Untersuchung mit dem dänischen Geheimdienst.",
                 availablePlayers: otherPlayers
             };
         },
@@ -300,8 +300,8 @@ export const OPERATION_CONFIG: Record<
 
                         if (shouldReveal) {
                             const msg = oneOrBothImpostors
-                                ? `Out of ${info.targetPlayer1} and ${info.targetPlayer2}, one or more of them are impostors.`
-                                : `${info.targetPlayer1} and ${info.targetPlayer2} are both agents.`;
+                                ? `Von ${info.targetPlayer1} und ${info.targetPlayer2} ist mindestens einer ein Hochstapler.`
+                                : `${info.targetPlayer1} und ${info.targetPlayer2} sind beide Agenten.`;
                             info.revealed = {
                                 target1Name: info.targetPlayer1,
                                 target1Team: target1.team,
@@ -311,7 +311,7 @@ export const OPERATION_CONFIG: Record<
                             };
                         } else {
                             info.revealed = {
-                                message: "One is an impostor and one is an agent (no revelation)"
+                                message: "Einer ist ein Hochstapler und einer ein Agent (keine Offenlegung)"
                             };
                         }
 
@@ -335,7 +335,7 @@ export const OPERATION_CONFIG: Record<
             const possibleTargets = players.filter(p => p !== self);
             return {
                 success: true,
-                message: "Choose a player to confess your team allegiance to.",
+                message: "Wähle einen Spieler, dem du deine Teamzugehörigkeit beichtest.",
                 availablePlayers: possibleTargets,
                 myTeam: teams[self]
             };
@@ -368,13 +368,13 @@ export const OPERATION_CONFIG: Record<
             if (!selectedTeam || selectedPlayers.length < 2) {
                 return {
                     success: false,
-                    message: "Not enough players on the same team to generate photographs."
+                    message: "Nicht genügend Spieler im selben Team, um Fotografien zu erstellen."
                 };
             }
             return {
                 success: true,
                 revealedPlayers: selectedPlayers,
-                message: `Your old photographs show that ${selectedPlayers[0]} and ${selectedPlayers[1]} are on the same team.`
+                message: `Deine alten Fotografien zeigen, dass ${selectedPlayers[0]} und ${selectedPlayers[1]} im selben Team sind.`
             };
         },
         modifyWinCondition: async (lobbyId, players, votes, teams, db) => {
@@ -410,7 +410,7 @@ export const OPERATION_CONFIG: Record<
             const possibleTargets = players.filter(p => p !== self);
             return {
                 success: true,
-                message: "Choose a player to convert to the opposite team.",
+                message: "Wähle einen Spieler, den du zum gegnerischen Team überlaufen lässt.",
                 availablePlayers: possibleTargets
             };
         },
@@ -452,7 +452,7 @@ export const OPERATION_CONFIG: Record<
         generateInfo: (players: string[], teams: Record<string, string>, self: string) => {
             return {
                 success: true,
-                message: "You are the scapegoat. You will only win if you are voted out!",
+                message: "Du bist der Sündenbock. Du gewinnst nur, wenn du herausgewählt wirst!",
                 winCondition: "must_be_voted_out"
             };
         },
@@ -495,7 +495,7 @@ export const OPERATION_CONFIG: Record<
             if (otherPlayers.length < 2) {
                 return {
                     success: false,
-                    message: "Not enough players for secret intel."
+                    message: "Nicht genügend Spieler für geheime Informationen."
                 };
             }
             // Pick two random distinct players (excluding self)
@@ -503,7 +503,7 @@ export const OPERATION_CONFIG: Record<
             const picked = shuffled.slice(0, 2);
             return {
                 success: true,
-                message: "Your secret intel will reveal information about two players.",
+                message: "Deine geheimen Informationen enthüllen Hinweise über zwei Spieler.",
                 targetPlayer1: picked[0],
                 targetPlayer2: picked[1]
             };
@@ -536,9 +536,9 @@ export const OPERATION_CONFIG: Record<
                     const shouldReveal = oneOrBothImpostors || bothAgents;
 
                     if (shouldReveal) {
-                        const msg = oneOrBothImpostors
-                            ? `Out of ${info.targetPlayer1} and ${info.targetPlayer2}, one or more of them are impostors.`
-                            : `${info.targetPlayer1} and ${info.targetPlayer2} are both agents.`;
+                            const msg = oneOrBothImpostors
+                                ? `Von ${info.targetPlayer1} und ${info.targetPlayer2} ist mindestens einer ein Hochstapler.`
+                                : `${info.targetPlayer1} und ${info.targetPlayer2} sind beide Agenten.`;
                         info.revealed = {
                             target1Name: info.targetPlayer1,
                             target1Team: target1.team,
@@ -548,7 +548,7 @@ export const OPERATION_CONFIG: Record<
                         };
                     } else {
                         info.revealed = {
-                            message: "One is an impostor and one is an agent (no revelation)"
+                            message: "Einer ist ein Hochstapler und einer ein Agent (keine Offenlegung)"
                         };
                     }
                     
@@ -570,14 +570,14 @@ export const OPERATION_CONFIG: Record<
             const possibleTargets = players.filter(p => p !== self);
             return {
                 success: true,
-                message: "Choose a player to have an unfortunate encounter with.",
+                message: "Wähle einen Spieler für eine unglückliche Begegnung.",
                 availablePlayers: possibleTargets
             };
         },
         // No win condition changes; messaging handled at operation time
         modifyWinCondition: async () => {}
     },
-    // SPY TRANSFER: Player chooses another; swap associations silently
+    // SPY TRANSFER: Player chooses another; emitter changes to target's team (no swap)
     "spy transfer": {
         fields: ["targetPlayer"],
         types: [],
@@ -585,7 +585,7 @@ export const OPERATION_CONFIG: Record<
             const possibleTargets = players.filter(p => p !== self);
             return {
                 success: true,
-                message: "Choose a player to secretly swap associations with.",
+                message: "Wähle einen Spieler; du wechselst heimlich in dessen Team.",
                 availablePlayers: possibleTargets
             };
         },
@@ -611,14 +611,10 @@ export const OPERATION_CONFIG: Record<
                     );
                     if (!emitterRow || !targetRow) continue;
 
-                    // Swap teams
+                    // Change emitter's team to the target's team; do not modify target's team
                     await db.run(
                         "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
                         [targetRow.team, lobbyId, player.username]
-                    );
-                    await db.run(
-                        "UPDATE players SET team = ? WHERE lobby_id = ? AND username = ?",
-                        [emitterRow.team, lobbyId, target]
                     );
 
                     // Mark applied and update in-memory map
@@ -627,7 +623,6 @@ export const OPERATION_CONFIG: Record<
                         [JSON.stringify({ transferApplied: true }), lobbyId, player.username]
                     );
                     teams[player.username] = targetRow.team;
-                    teams[target] = emitterRow.team;
                 } catch (err) {
                     console.error(`Fehler bei der Verarbeitung von 'Agentenübertragung' für Spieler ${player.username}:`, err);
                 }
@@ -643,7 +638,7 @@ export const OPERATION_CONFIG: Record<
             if (otherPlayers.length === 0) {
                 return {
                     success: false,
-                    message: "No other players available for secret tip."
+                    message: "Keine anderen Spieler verfügbar für geheimen Hinweis."
                 };
             }
             // Pick a random other player and reveal their association
@@ -654,7 +649,7 @@ export const OPERATION_CONFIG: Record<
                 success: true,
                 tippedPlayerName: randomTarget,
                 tippedPlayerAssociation: targetTeam,
-                message: `You've received a secret tip: ${randomTarget} is a ${targetTeam === 'impostor' ? 'virus agent' : 'service agent'}!`
+                message: `Du hast einen geheimen Hinweis erhalten: ${randomTarget} ist ein ${targetTeam === 'impostor' ? 'Hochstapler' : 'Agent'}!`
             };
         },
         modifyWinCondition: async () => {

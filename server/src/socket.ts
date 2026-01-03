@@ -57,17 +57,17 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const db = getDB();
         const lobby = await db.get('SELECT id, phase, status, current_round, total_rounds FROM lobbies WHERE lobby_code = ?', [lobbyCode]);
         if (!lobby) {
-          socket.emit('error', { message: 'Lobby not found' });
+          socket.emit('error', { message: 'Lobby nicht gefunden' });
           return;
         }
         if (lobby.phase === 'waiting' || lobby.status === 'waiting') {
-          socket.emit('error', { message: "Cannot rejoin: Game has not started yet. Please use 'join-lobby' to join the lobby." });
+          socket.emit('error', { message: "Wiedereintritt nicht möglich: Das Spiel hat noch nicht begonnen. Bitte verwende 'join-lobby', um der Lobby beizutreten." });
           return;
         }
 
         const player = await db.get('SELECT id, team, operation, operation_info FROM players WHERE username = ? AND lobby_id = ?', [username, lobby.id]);
         if (!player) {
-          socket.emit('error', { message: 'You are no longer in this game. Cannot rejoin.' });
+          socket.emit('error', { message: 'Du bist nicht mehr in diesem Spiel. Wiedereintritt nicht möglich.' });
           return;
         }
 
@@ -97,7 +97,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           const impostors = players.filter((p: any) => p.team === 'impostor').map((p: any) => p.username);
           const agents = players.filter((p: any) => p.team === 'agent').map((p: any) => p.username);
           socket.emit('team-assignment', { impostors, agents, phase: lobby.phase });
-          socket.emit('your-team', { team: player.team, message: `You are a ${player.team === 'impostor' ? 'virus agent' : 'service agent'}!` });
+          socket.emit('your-team', { team: player.team, message: `Du bist ein ${player.team === 'impostor' ? 'Hochstapler' : 'Agent'}!` });
         }
 
         if (player.operation) {
@@ -121,7 +121,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           }
         }
 
-        socket.emit('phase-change', { phase: lobby.phase, message: `Current phase: ${lobby.phase}` });
+        socket.emit('phase-change', { phase: lobby.phase, message: `Aktuelle Phase: ${lobby.phase}` });
 
         // If we have in-memory turn state for this lobby, inform the reconnecting client
         try {
@@ -138,7 +138,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         console.log(`Spieler ${username} ist dem Spiel in Lobby ${lobbyCode} erneut beigetreten`);
       } catch (error) {
         console.error('Fehler beim erneuten Beitritt zum Spiel:', error);
-        socket.emit('error', { message: 'Failed to rejoin game' });
+        socket.emit('error', { message: 'Wiedereintritt ins Spiel fehlgeschlagen' });
       }
     });
 
@@ -146,11 +146,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
       try {
         const { username, lobbyCode } = data;
         if (!validateUsername(username)) {
-          if (callback) callback({ success: false, error: 'Invalid username. Must be 2-20 characters, alphanumeric and underscores only.' });
+          if (callback) callback({ success: false, error: 'Ungültiger Benutzername. 2-20 Zeichen, nur alphanumerisch und Unterstriche erlaubt.' });
           return;
         }
         if (!validateLobbyCode(lobbyCode)) {
-          if (callback) callback({ success: false, error: 'Invalid lobby code format. Must be 6 alphanumeric characters.' });
+          if (callback) callback({ success: false, error: 'Ungültiges Lobby-Code-Format. Muss 6 alphanumerische Zeichen haben.' });
           return;
         }
         const normalizedLobbyCode = lobbyCode.trim().toUpperCase();
@@ -159,7 +159,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         const lobby = await lobbyService.getLobby(normalizedLobbyCode);
         if (!lobby) {
-          if (callback) callback({ success: false, error: 'Lobby does not exist' });
+          if (callback) callback({ success: false, error: 'Lobby existiert nicht' });
           return;
         }
 
@@ -215,7 +215,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         console.log(`Spieler ${username} ist der Lobby ${normalizedLobbyCode} ${isNewJoin ? 'beigetreten' : 'wieder beigetreten'}`);
       } catch (error) {
         console.error('Fehler beim Beitreten zur Lobby:', error);
-        if (callback) callback({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+        if (callback) callback({ success: false, error: error instanceof Error ? error.message : 'Unbekannter Fehler' });
       }
     });
 
@@ -223,26 +223,26 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
       try {
         const db = getDB();
         const lobby = await lobbyService.getLobby(lobbyCode);
-        if (!lobby) throw new Error('Lobby does not exist');
+        if (!lobby) throw new Error('Lobby existiert nicht');
         const lobbyId = lobby.id;
-        if (lobby.status !== 'waiting') throw new Error('Game has already started');
+        if (lobby.status !== 'waiting') throw new Error('Spiel hat bereits begonnen');
 
         const playersInLobby = await db.all('SELECT username FROM players WHERE lobby_id = ?', [lobbyId]);
         if (playersInLobby.length < GAME_CONFIG.MIN_PLAYERS) {
-          throw new Error(`Not enough players. Minimum required: ${GAME_CONFIG.MIN_PLAYERS}`);
+          throw new Error(`Nicht genug Spieler. Mindestanzahl: ${GAME_CONFIG.MIN_PLAYERS}`);
         }
 
         await db.run(`UPDATE lobbies SET total_rounds = ?, current_round = 1, status = 'playing', phase = ? WHERE id = ?`, [1, GamePhase.TEAM_ASSIGNMENT, lobbyId]);
 
         await gameService.startNewRound(lobbyId, 1, {});
 
-        io?.to(lobbyId).emit('game-started', { message: 'Game has started!', players: playersInLobby.map((p: any) => p.username), phase: GamePhase.TEAM_ASSIGNMENT });
+        io?.to(lobbyId).emit('game-started', { message: 'Spiel wurde gestartet!', players: playersInLobby.map((p: any) => p.username), phase: GamePhase.TEAM_ASSIGNMENT });
 
         const allPlayers = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
         for (const player of allPlayers) {
           const playerSocketId = connectionManager.getSocketId(player.username);
           if (playerSocketId) {
-            io?.to(playerSocketId).emit('your-team', { team: player.team, message: `You are a ${player.team === 'impostor' ? 'virus agent' : 'service agent'}!` });
+            io?.to(playerSocketId).emit('your-team', { team: player.team, message: `Du bist ein ${player.team === 'impostor' ? 'Hochstapler' : 'Agent'}!` });
           }
         }
 
@@ -261,7 +261,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.OPERATION_ASSIGNMENT, lobbyId]);
-        io?.to(lobbyId).emit('phase-change', { phase: GamePhase.OPERATION_ASSIGNMENT, message: 'Operation assignment phase has begun.' });
+        io?.to(lobbyId).emit('phase-change', { phase: GamePhase.OPERATION_ASSIGNMENT, message: 'Operationszuweisungsphase hat begonnen.' });
         console.log(`Lobby ${lobbyCode} (ID: ${lobbyId}) in die Phase OPERATIONSZUWEISUNG verschoben`);
 
         for (const opItem of playerOperations) {
@@ -274,7 +274,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           io?.to(lobbyId).emit('operation-assigned-public', { player, operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name });
           // Broadcast standardized log for initial assignment as well
           if (operationMeta?.name) {
-            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${player} has received the ${operationMeta.name} operation` });
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${player} hat die Operation ${operationMeta.name} erhalten` });
           }
 
           if (playerSocketId) {
@@ -396,7 +396,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen für Lobby ${lobbyCode} (ID: ${lobbyId}) akzeptiert. In die ABSTIMMUNGSPHASE gewechselt.`);
             return;
           }
@@ -437,7 +437,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           console.log(`Weise Operation '${nextOpMeta?.name}' Spieler ${candidate} in Lobby ${lobbyCode} zu`);
           io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
           if (nextOpMeta?.name) {
-            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
           }
 
           if (playerSocketId) {
@@ -467,7 +467,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
           if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen abgeschlossen für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
           }
         }
@@ -491,11 +491,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         const targetPlayer = rawTarget as string | undefined;
         if (!lobbyId) {
-          socket.emit('error', { message: 'Lobby not found for confession' });
+          socket.emit('error', { message: 'Lobby für Geständnis nicht gefunden' });
           return;
         }
         if (!targetPlayer) {
-          socket.emit('error', { message: 'Invalid confession target' });
+          socket.emit('error', { message: 'Ungültiges Geständnis-Ziel' });
           return;
         }
 
@@ -504,26 +504,26 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
         const turnState = turnStateByLobby[lobbyId];
         if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
-          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
           return;
         }
         if (!validateVoteData(emitter || '', targetPlayer)) {
-          socket.emit('error', { message: 'Invalid confession target' });
+          socket.emit('error', { message: 'Ungültiges Geständnis-Ziel' });
           return;
         }
 
         // Identify the confessor strictly as the emitter with 'confession' operation
         const confessor = await db.get("SELECT username, team, operation_info FROM players WHERE lobby_id = ? AND username = ? AND operation = 'confession'", [lobbyId, emitter]);
         if (!confessor) {
-          socket.emit('error', { message: 'Invalid confession operation' });
+          socket.emit('error', { message: 'Ungültige Geständnis-Operation' });
           return;
         }
         // Check if confessor already used confession based on operation_info flag
         try {
           const info = confessor.operation_info ? JSON.parse(confessor.operation_info) : {};
           if (info && info.confessionMade === true) {
-            socket.emit('error', { message: 'Confession operation has already been used' });
+            socket.emit('error', { message: 'Geständnis-Operation wurde bereits verwendet' });
             return;
           }
         } catch { /* ignore parse errors */ }
@@ -555,7 +555,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         // Inform the confessor's client of their selected target for UI display
         socket.emit('operation-info', { operation: 'confession', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true });
-        socket.emit('game-message', { type: 'system', text: `${confessor.username} used ${'confession'}` });
+        socket.emit('game-message', { type: 'system', text: `${confessor.username} hat ${'confession'} verwendet` });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Progress operation assignments: find next unassigned player and assign
@@ -580,7 +580,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
               io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
               }
 
               if (playerSocketId) {
@@ -604,7 +604,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
               if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
                 await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
               }
             }
           }
@@ -619,7 +619,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen akzeptiert (durch Geständnis) für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
           }
         } catch (acceptErr) {
@@ -627,7 +627,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (error) {
         console.error('Error processing confession:', error);
-        socket.emit('error', { message: 'Failed to process confession' });
+        socket.emit('error', { message: 'Verarbeitung des Geständnisses fehlgeschlagen' });
       }
     });
 
@@ -646,11 +646,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         const targetPlayer = rawTarget as string | undefined;
         if (!lobbyId) {
-          socket.emit('error', { message: 'Lobby not found for defector' });
+          socket.emit('error', { message: 'Lobby für Überläufer nicht gefunden' });
           return;
         }
         if (!targetPlayer) {
-          socket.emit('error', { message: 'No target selected for defector' });
+          socket.emit('error', { message: 'Kein Ziel für Überläufer ausgewählt' });
           return;
         }
         const db = getDB();
@@ -658,8 +658,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
         const turnState = turnStateByLobby[lobbyId];
         if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
-          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
           return;
         }
         if (!validateVoteData(emitter || '', targetPlayer)) {
@@ -669,17 +669,17 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         const defector = await db.get("SELECT username, operation_accepted FROM players WHERE lobby_id = ? AND operation = 'defector'", [lobbyId]);
         if (!defector) {
-          socket.emit('error', { message: 'Invalid defector operation' });
+          socket.emit('error', { message: 'Ungültige Überläufer-Operation' });
           return;
         }
         if (defector.operation_accepted && !validateOperationNotUsed(defector.operation_accepted)) {
-          socket.emit('error', { message: 'Defector operation has already been used' });
+          socket.emit('error', { message: 'Überläufer-Operation wurde bereits verwendet' });
           return;
         }
 
         const targetExists = await db.get('SELECT username FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, targetPlayer]);
         if (!targetExists) {
-          socket.emit('error', { message: 'Target player not found' });
+          socket.emit('error', { message: 'Zielspieler nicht gefunden' });
           return;
         }
 
@@ -690,8 +690,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         // Inform the defector's client of their selected target for UI display
         socket.emit('operation-info', { operation: 'defector', info: { targetPlayer }, message: undefined });
-        socket.emit('operation-used', { success: true, message: `You've chosen ${targetPlayer} as your target. Their team will be switched during the next phase.` });
-        socket.emit('game-message', { type: 'system', text: `${defector.username} used ${'defector'}` });
+        socket.emit('operation-used', { success: true, message: `Du hast ${targetPlayer} als dein Ziel gewählt. Das Team wird in der nächsten Phase gewechselt.` });
+        socket.emit('game-message', { type: 'system', text: `${defector.username} hat ${'defector'} verwendet` });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat defector submission as acceptance and progress assignment similar to other operations
@@ -703,7 +703,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen akzeptiert (durch Überläufer) für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
           }
         } catch (acceptErr) {
@@ -732,7 +732,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
               io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
               }
 
               if (playerSocketId) {
@@ -756,7 +756,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
               if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
                 await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
               }
             }
           }
@@ -765,7 +765,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (error) {
         console.error('Error processing defector operation:', error);
-        socket.emit('error', { message: 'Failed to process defector operation' });
+        socket.emit('error', { message: 'Verarbeitung der Überläufer-Operation fehlgeschlagen' });
       }
     });
 
@@ -775,7 +775,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const db = getDB();
         const lobby = await lobbyService.getLobby(lobbyCode);
         if (!lobby || !lobby.id) {
-          socket.emit('error', { message: 'Lobby not found for operation' });
+          socket.emit('error', { message: 'Lobby für Operation nicht gefunden' });
           return;
         }
         const lobbyId = lobby.id;
@@ -783,8 +783,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
         const turnState = turnStateByLobby[lobbyId];
         if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'It is not your turn to perform this operation.' });
-          socket.emit('game-error', { message: 'It is not your turn to perform this operation.' });
+          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
           return;
         }
 
@@ -817,8 +817,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                 let reveal: any;
                 if (shouldReveal) {
                   const message = oneOrBothImpostors
-                    ? `Out of ${t1} and ${t2}, one or more of them are impostors.`
-                    : `${t1} and ${t2} are both agents.`;
+                    ? `Von ${t1} und ${t2} ist mindestens einer ein Hochstapler.`
+                    : `${t1} und ${t2} sind beide Agenten.`;
                   reveal = {
                     target1Name: t1,
                     target1Team: target1.team,
@@ -827,7 +827,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                     message
                   };
                 } else {
-                  reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
+                  reveal = { message: 'Einer ist Hochstapler und einer ist Agent (keine Offenlegung)' };
                 }
 
                 // Persist reveal into operation_info, and include selected targets for client display
@@ -862,8 +862,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                 const oneOrMoreImpostors = emitterRow.team === 'impostor' || targetRow.team === 'impostor';
                 const bothAgents = emitterRow.team === 'agent' && targetRow.team === 'agent';
                 const message = oneOrMoreImpostors
-                  ? `Out of ${emitter} and ${targetPlayer}, one or more of them are impostors.`
-                  : `${emitter} and ${targetPlayer} are both agents.`;
+                  ? `Von ${emitter} und ${targetPlayer} ist mindestens einer ein Hochstapler.`
+                  : `${emitter} und ${targetPlayer} sind beide Agenten.`;
 
                 const reveal = { message };
 
@@ -892,11 +892,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         // Tailored acknowledgement messages for certain operations
         if (typeof operation === 'string' && operation.toLowerCase() === 'spy transfer') {
-          socket.emit('operation-used', { success: true, message: 'Spy transfer submitted. Associations will be swapped secretly during the next phase.' });
+          socket.emit('operation-used', { success: true, message: 'Spion-Übertragung übermittelt. Zugehörigkeiten werden in der nächsten Phase heimlich getauscht.' });
         } else {
-          socket.emit('operation-used', { success: true, message: 'Operation submitted.' });
+          socket.emit('operation-used', { success: true, message: 'Operation übermittelt.' });
         }
-        io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} used operation ${operation}` });
+        io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} hat die Operation ${operation} verwendet` });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat operation submission as acceptance for client-choice operations.
@@ -909,7 +909,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments accepted. Voting phase begins!' });
+            io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen akzeptiert (durch operation-used) für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
           }
         } catch (acceptErr) {
@@ -938,7 +938,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
               io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} has received the ${nextOpMeta.name} operation` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
               }
 
               if (playerSocketId) {
@@ -962,7 +962,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
               if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
                 await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
-                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'All assignments complete. Voting phase begins!' });
+                io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
               }
             }
           }
@@ -971,24 +971,24 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (err) {
         console.error('Error handling generic operation-used:', err);
-        socket.emit('error', { message: 'Failed to process operation' });
+        socket.emit('error', { message: 'Verarbeitung der Operation fehlgeschlagen' });
       }
     });
 
     socket.on('submit-vote', async ({ lobbyCode, username, vote }) => {
       try {
         if (!validateLobbyCode(lobbyCode)) {
-          socket.emit('error', { message: 'Invalid lobby code format' });
+          socket.emit('error', { message: 'Ungültiges Lobby-Code-Format' });
           return;
         }
         if (!validateVoteData(username, vote)) {
-          socket.emit('error', { message: 'Invalid vote: voter and target must be different valid players' });
+          socket.emit('error', { message: 'Ungültige Stimme: Wähler und Ziel müssen unterschiedliche, gültige Spieler sein' });
           return;
         }
 
         const db = getDB();
         const lobby = await lobbyService.getLobby(lobbyCode);
-        if (!lobby || !lobby.id) throw new Error('Lobby does not exist or has no ID');
+        if (!lobby || !lobby.id) throw new Error('Lobby existiert nicht oder hat keine ID');
 
         const lobbyId = lobby.id;
         const validation = await gameService.validateVote(lobbyId, username, vote);
@@ -996,14 +996,14 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('error', { message: validation.error });
           return;
         }
-        if (lobby.phase !== GamePhase.VOTING) throw new Error('Voting is not currently allowed - not in voting phase');
+        if (lobby.phase !== GamePhase.VOTING) throw new Error('Abstimmen ist derzeit nicht erlaubt – nicht in der Abstimmungsphase');
 
         const currentLobbyRound = lobby.current_round;
-        if (currentLobbyRound === null || currentLobbyRound === undefined) throw new Error('Could not determine current round for voting.');
+        if (currentLobbyRound === null || currentLobbyRound === undefined) throw new Error('Aktuelle Runde für die Abstimmung konnte nicht ermittelt werden.');
 
         const voteRecorded = await gameService.recordVote(lobbyId, username, vote, currentLobbyRound);
         if (!voteRecorded) {
-          socket.emit('error', { message: 'Failed to record vote' });
+          socket.emit('error', { message: 'Speichern der Stimme fehlgeschlagen' });
           return;
         }
 
@@ -1029,7 +1029,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (error) {
         console.error('Error processing vote:', error);
-        socket.emit('error', { message: error instanceof Error ? error.message : 'Unknown error' });
+        socket.emit('error', { message: error instanceof Error ? error.message : 'Unbekannter Fehler' });
       }
     });
 
@@ -1059,7 +1059,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (error) {
         console.error('Error leaving lobby:', error);
-        socket.emit('error', { message: error instanceof Error ? error.message : 'Unknown error' });
+        socket.emit('error', { message: error instanceof Error ? error.message : 'Unbekannter Fehler' });
       }
     });
 
@@ -1068,7 +1068,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const db = getDB();
         const lobby = await lobbyService.getLobby(lobbyCode);
         if (!lobby) {
-          socket.emit('error', { message: 'Lobby not found' });
+          socket.emit('error', { message: 'Lobby nicht gefunden' });
           return;
         }
 
@@ -1088,7 +1088,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         console.log(`Lobby ${lobbyCode} auf Wartungsphase zurückgesetzt`);
       } catch (error) {
         console.error('Error returning to lobby:', error);
-        socket.emit('error', { message: error instanceof Error ? error.message : 'Unknown error' });
+        socket.emit('error', { message: error instanceof Error ? error.message : 'Unbekannter Fehler' });
       }
     });
 
@@ -1108,11 +1108,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           }
           if (callback) callback({ success: true, players: result.players });
         } else {
-          if (callback) callback({ success: false, error: result.error || 'Could not retrieve players' });
+          if (callback) callback({ success: false, error: result.error || 'Spieler konnten nicht abgerufen werden' });
         }
       } catch (error) {
         console.error('Error retrieving lobby players:', error);
-        if (callback) callback({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+        if (callback) callback({ success: false, error: error instanceof Error ? error.message : 'Unbekannter Fehler' });
       }
     });
   });

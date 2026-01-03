@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Button } from 'react-bootstrap';
+import { Form } from 'react-bootstrap';
 import type { OperationRendererProps } from '@/types';
 
 const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, username, disabled, onSubmit }) => {
@@ -25,7 +25,14 @@ const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, use
           ))}
         </Form.Select>
       </Form.Group>
-      <Button data-testid="operation-submit" type="submit" disabled={disabled || !choice} size="sm">Senden</Button>
+      <button
+        data-testid="operation-submit"
+        type="submit"
+        disabled={disabled || !choice}
+        className="inline-flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Bestätigen
+      </button>
     </Form>
   );
 };

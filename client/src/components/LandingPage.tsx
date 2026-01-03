@@ -86,7 +86,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     };
 
     const handleError = (error: ErrorData) => {
-      setErrorMessage(error.message || "An error occurred");
+      setErrorMessage(error.message || "Ein Fehler ist aufgetreten");
       setIsLoading(false);
     };
 
@@ -123,26 +123,26 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     const trimmedLobbyCode = lobbyCode.trim().toUpperCase(); // Ensure uppercase
 
     if (!trimmedUsername || !trimmedLobbyCode) {
-      setErrorMessage("Please fill in all fields");
+      setErrorMessage("Bitte fülle alle Felder aus");
       return;
     }
 
     // Validate lobby code format (should be 6 characters)
     if (trimmedLobbyCode.length !== 6) {
-      setErrorMessage("Invalid lobby code format");
+      setErrorMessage("Ungültiges Format des Lobby-Codes");
       return;
     }
 
     // Check if socket is available and connected
     if (!socket || !socket.connected) {
-      setErrorMessage("Connecting to server...");
+      setErrorMessage("Verbindung zum Server wird hergestellt...");
       connect();
       // Wait a bit for connection, then try to join
       setTimeout(() => {
         if (socket?.connected) {
           performJoin(trimmedUsername, trimmedLobbyCode);
         } else {
-          setErrorMessage("Failed to connect to server. Please wait a moment and try again.");
+          setErrorMessage("Verbindung zum Server fehlgeschlagen. Bitte warte einen Moment und versuche es erneut.");
           setIsLoading(false);
         }
       }, 2000);
@@ -154,7 +154,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   
   const performJoin = (trimmedUsername: string, trimmedLobbyCode: string) => {
     if (!socket || !socket.connected) {
-      setErrorMessage("Socket not connected. Please try again.");
+      setErrorMessage("Socket nicht verbunden. Bitte versuche es erneut.");
       setIsLoading(false);
       return;
     }
@@ -171,7 +171,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
         // Only show error if still loading (callback hasn't been called)
         setIsLoading((currentLoading) => {
           if (currentLoading) {
-            setErrorMessage("Server did not respond. Please try again.");
+            setErrorMessage("Server hat nicht geantwortet. Bitte versuche es erneut.");
             return false;
           }
           return currentLoading;
@@ -201,7 +201,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
             onJoinGame(response.lobbyCode);
             saveToRecentGames(response.lobbyCode);
           } else {
-            setErrorMessage(response?.error || "Failed to join lobby");
+            setErrorMessage(response?.error || "Beitritt zur Lobby fehlgeschlagen");
             setIsLoading(false);
           }
         }
@@ -211,8 +211,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      console.error("Error in handleJoinLobby:", error);
-      setErrorMessage("Failed to join lobby");
+      console.error("Fehler in handleJoinLobby:", error);
+      setErrorMessage("Beitritt zur Lobby fehlgeschlagen");
       setIsLoading(false);
     }
   };
@@ -221,7 +221,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     const trimmedUsername = username.trim();
 
     if (!trimmedUsername) {
-      setErrorMessage("Please enter a username");
+      setErrorMessage("Bitte gib einen Benutzernamen ein");
       return;
     }
 
@@ -242,11 +242,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       onJoinGame(lobbyCode);
       saveToRecentGames(lobbyCode);
     } catch (error) {
-      console.error("Error creating lobby:", error);
+      console.error("Fehler beim Erstellen der Lobby:", error);
       if (axios.isAxiosError(error) && error.response?.data?.error) {
         setErrorMessage(error.response.data.error);
       } else {
-        setErrorMessage("Failed to create lobby");
+        setErrorMessage("Erstellen der Lobby fehlgeschlagen");
       }
       setIsLoading(false);
     }
@@ -268,7 +268,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
     const trimmedUsername = username.trim();
 
     if (!trimmedUsername) {
-      setErrorMessage("Please enter a username");
+      setErrorMessage("Bitte gib einen Benutzernamen ein");
       return;
     }
 
@@ -292,14 +292,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
             onJoinGame(response.lobbyCode);
             saveToRecentGames(response.lobbyCode);
           } else {
-            setErrorMessage(response.error || "Failed to join lobby");
+            setErrorMessage(response.error || "Beitritt zur Lobby fehlgeschlagen");
             setIsLoading(false);
           }
         }
       );
     } catch (error) {
-      console.error("Error in handleQuickJoin:", error);
-      setErrorMessage("Failed to join lobby");
+      console.error("Fehler in handleQuickJoin:", error);
+      setErrorMessage("Beitritt zur Lobby fehlgeschlagen");
       setIsLoading(false);
     }
   };
@@ -338,7 +338,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.054 0 1.918-.816 1.994-1.85L21 12c0-5.523-4.477-10-10-10S1 6.477 1 12c0 5.523 4.477 10 10 10z"
                   />
                 </svg>
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>Fehler</AlertTitle>
                 <AlertDescription>{errorMessage}</AlertDescription>
               </Alert>
             )}

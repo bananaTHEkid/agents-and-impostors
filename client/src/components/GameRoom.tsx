@@ -15,7 +15,6 @@ import {
   PlayerJoinedData,
   ErrorData,
   JoinSuccessData,
-  GameMessage,
   RoundResult,
 } from "@/types";
 import GameInfo from "./GameInfo";
@@ -46,7 +45,7 @@ interface PlayerOperation {
 }
 
 import { useSocket } from '@/Socket/useSocket';
-import { FiLogOut, FiMessageCircle, FiUsers, FiClock } from "react-icons/fi";
+import { FiLogOut, FiUsers, FiClock } from "react-icons/fi";
 
 const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const { socket } = useSocket();
@@ -57,10 +56,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const [players, setPlayers] = useState<Player[]>(() => {
     const saved = sessionStorage.getItem('players');
     return saved ? JSON.parse(saved) as Player[] : [];
-  });
-  const [messages, setMessages] = useState<GameMessage[]>(() => {
-    const saved = sessionStorage.getItem('messages');
-    return saved ? JSON.parse(saved) as GameMessage[] : [];
   });
   // Voting UI is handled in VotingPanel during VOTING phase
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -97,10 +92,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     else sessionStorage.removeItem('players');
   }, [players]);
 
-  useEffect(() => {
-    if (messages.length) sessionStorage.setItem('messages', JSON.stringify(messages));
-    else sessionStorage.removeItem('messages');
-  }, [messages]);
+  // Spielnachrichten removed: no message persistence
 
   useEffect(() => {
     if (myOperation) sessionStorage.setItem('myOperation', JSON.stringify(myOperation));
@@ -140,9 +132,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     // Listen for new messages/prompts (authoritative logs from server only)
-    socket.on("game-message", (message: GameMessage) => {
-      setMessages((prev) => [...prev, message]);
-    });
+    // Spielnachrichten removed: no game-message log handling
     // Track public operation assignment announcements for sidebar display
     socket.on('operation-assigned-public', (data: { player: string; operation: string }) => {
       setPublicOperations(prev => ({ ...prev, [data.player]: data.operation }));
@@ -150,31 +140,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
 
     // Listen for errors
     socket.on("game-error", (error: ErrorData) => {
-      setErrorMessage(error.message || "An error occurred.");
+      setErrorMessage(error.message || "Ein Fehler ist aufgetreten.");
     });
 
     // Listen for game start
     socket.on("game-started", (data: { phase: GamePhase; message: string }) => {
       setCurrentPhase(data.phase);
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: data.message,
-        },
-      ]);
     });
 
     // Listen for phase changes
     socket.on("phase-change", (data: { phase: GamePhase; message: string }) => {
       setCurrentPhase(data.phase);
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: data.message,
-        },
-      ]);
     });
 
     // Listen for team and operation events
@@ -182,22 +158,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       if (data.phase) {
         setCurrentPhase(data.phase);
       }
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `Teams have been assigned!`,
-        },
-      ]);
     });
 
     socket.on("operation-assigned", (data: OperationAssignedData) => {
       console.log(`Operation assigned: ${data.operation}`);
-      // Log a system message to satisfy unit test expectations
-      setMessages((prev) => ([
-        ...prev,
-        { type: 'system', text: `Operation assigned: ${data.operation}` }
-      ]));
     });
 
     socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['info'] }) => {
@@ -219,21 +183,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
     socket.on("operation-used", (data: { operation?: string; success: boolean; message?: string }) => {
       if (data.success) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            type: "system",
-            text: data.message || `Your operation action was successful.`,
-          },
-        ]);
         setMyOperation(prevOp => {
           if (!prevOp) return null;
-          // Only mark used if server indicates this operation (or no operation name provided)
           if (data.operation && data.operation !== prevOp.name) return prevOp;
           return { ...prevOp, used: true };
         });
       } else {
-        setErrorMessage(data.message || "Failed to use operation.");
+        setErrorMessage(data.message || "Operation konnte nicht ausgeführt werden.");
       }
     });
     // Explicit acknowledgement for assignment acceptance; mark operation as used
@@ -244,20 +200,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       });
     });
     // Receive confession reveal from another player
-    socket.on('confession-received', (data: { type?: string; fromPlayer: string; theirTeam: 'agent' | 'impostor' | string }) => {
-      const readableTeam = data.theirTeam === 'impostor' ? 'impostor' : (data.theirTeam === 'agent' ? 'agent' : String(data.theirTeam));
-      setMessages(prev => ([
-        ...prev,
-        { type: 'system', text: `${data.fromPlayer} confesses: they are a ${readableTeam}.` }
-      ]));
+    socket.on('confession-received', (_data: { type?: string; fromPlayer: string; theirTeam: 'agent' | 'impostor' | string }) => {
+      // Spielnachrichten removed: no logging
     });
     // Receive unfortunate encounter reveal to the target player
-    socket.on('encounter-received', (data: { from: string; with: string; revealed: { message: string } }) => {
-      const msg = data?.revealed?.message || `You had an unfortunate encounter with ${data.from}.`;
-      setMessages(prev => ([
-        ...prev,
-        { type: 'system', text: msg }
-      ]));
+    socket.on('encounter-received', (_data: { from: string; with: string; revealed: { message: string } }) => {
+      // Spielnachrichten removed: no logging
     });
     // Listen for turn lifecycle
     socket.on('turn-start', (data: { currentTurnPlayer: string; turnIndex: number }) => {
@@ -274,37 +222,20 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       setPlayers(prev => prev.map(p => ({ ...p, isCurrentTurn: p.username === data.currentTurnPlayer })));
     });
 
-    socket.on("player-voted", (data: { username: string }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `${data.username} has submitted a vote.`,
-        },
-      ]);
-    });
+    // Spielnachrichten removed: no player-voted log
 
-    socket.on("vote-submitted", (data: { vote: string }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: `You voted for ${data.vote}.`,
-        },
-      ]);
-    });
+    // Spielnachrichten removed: no vote-submitted log
 
     // Legacy: some servers may emit 'game-results'; keep handling if present
     socket.on("game-results", (data: GameResultsData) => {
       console.log(`Game results: ${JSON.stringify(data.results)}`);
       setCurrentPhase(GamePhase.COMPLETED);
-      setMessages((prev) => ([...prev, { type: 'system', text: `Game has ended. Check results!` }]));
       setGameData((prev: GameState | null) => ({ ...(prev || {}), results: data.results, phase: GamePhase.COMPLETED }));
     });
 
     // New: handle server 'voting-complete' and 'game-end'
     socket.on("voting-complete", (_roundResult: any) => {
-      setMessages(prev => ([...prev, { type: 'system', text: 'Voting complete. Calculating results…' }]));
+      // Spielnachrichten removed: no logging
     });
 
     socket.on("game-end", (finalResults: any) => {
@@ -320,7 +251,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           ? finalResults.roundResults[0]
           : null;
         setCurrentPhase(GamePhase.COMPLETED);
-        setMessages((prev) => ([...prev, { type: 'system', text: `Game has ended. Check results!` }]));
         setGameData((prev: GameState | null) => ({ ...(prev || {}), results: mapped, phase: GamePhase.COMPLETED }));
         setFinalRound(round);
       } catch (e) {
@@ -343,7 +273,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     return () => {
       socket.off("game-state");
       socket.off("player-list");
-      socket.off("game-message");
+      // Spielnachrichten removed: no game-message handler
       socket.off('operation-assigned-public');
       socket.off("game-error");
       socket.off("game-started");
@@ -357,8 +287,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       socket.off('encounter-received');
       socket.off('turn-start');
       socket.off('turn-change');
-      socket.off("player-voted");
-      socket.off("vote-submitted");
+      // Removed message-related handlers
       socket.off("game-results");
       socket.off("voting-complete");
       socket.off("game-end");
@@ -404,8 +333,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       case GamePhase.OPERATION_ASSIGNMENT:
         return (
           <div className="text-center p-4">
-            <h4 aria-label="Operation Assignment Phase">Operationszuweisungsphase</h4>
-            <p>Spezielle Operationen werden den Spielern zugewiesen…</p>
             <div className="mt-3">
               <OperationPanel
                 operation={myOperation ? { name: myOperation.name, info: myOperation.info, used: myOperation.used } : null}
@@ -422,7 +349,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       case GamePhase.VOTING:
         return (
           <div>
-            <h4 aria-label="Voting Phase">Abstimmungsphase</h4>
             <p>Stimme für den Spieler, den du für einen Hochstapler hältst:</p>
             {/* Reusable voting panel */}
             <VotingPanel players={players} currentUsername={username} lobbyCode={lobbyCode} />
@@ -440,7 +366,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               <div className="results mt-3 text-left">
                 {/* Simple textual summary to satisfy unit tests */}
                 <div className="mb-3">
-                  <strong>Results:</strong>
+                  <strong>Ergebnisse:</strong>
                   <ul className="mt-1 list-disc pl-5">
                     {(gameData?.results || []).map((r) => (
                       <li key={`res-${r.username}`}>{r.username}: {r.team} {r.win_status}</li>
@@ -450,21 +376,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 {finalRound && (
                   <div className="mb-4 bg-amber-50 text-amber-800 border border-amber-100 rounded-xl overflow-hidden">
                     <div className="bg-amber-100/60 p-3 border-b border-amber-100">
-                      <h5 className="m-0 font-semibold">Voting Outcome</h5>
+                      <h5 className="m-0 font-semibold">Abstimmungsergebnis</h5>
                     </div>
                     <div className="p-4">
                       {finalRound.eliminatedPlayers && finalRound.eliminatedPlayers.length === 1 && (
                         <div>
-                          <span className="font-medium">Voted out:</span> {finalRound.eliminatedPlayers[0]} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} votes)</span>}
+                          <span className="font-medium">Abgewählt:</span> {finalRound.eliminatedPlayers[0]} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} Stimmen)</span>}
                         </div>
                       )}
                       {finalRound.eliminatedPlayers && finalRound.eliminatedPlayers.length > 1 && finalRound.eliminatedPlayers.length < (gameData?.results?.length || Infinity) && (
                         <div>
-                          <span className="font-medium">Tie between:</span> {finalRound.eliminatedPlayers.join(', ')} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} votes each)</span>}
+                          <span className="font-medium">Gleichstand zwischen:</span> {finalRound.eliminatedPlayers.join(', ')} {votedCounts.max > 0 && <span className="text-sm text-amber-700">({votedCounts.max} Stimmen jeweils)</span>}
                         </div>
                       )}
                       {finalRound.eliminatedPlayers && (finalRound.eliminatedPlayers.length === 0 || finalRound.eliminatedPlayers.length === (gameData?.results?.length || 0)) && (
-                        <div className="text-sm">No decisive elimination this round.</div>
+                        <div className="text-sm">Keine eindeutige Eliminierung in dieser Runde.</div>
                       )}
                     </div>
                   </div>
@@ -472,7 +398,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="bg-green-50 p-3 border-b border-green-100">
-                      <h5 className="text-green-800 font-semibold m-0">Winners</h5>
+                      <h5 className="text-green-800 font-semibold m-0">Gewinner</h5>
                     </div>
                     <div className="p-4">
                       {winners.length ? (
@@ -495,13 +421,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                           ))}
                         </ul>
                       ) : (
-                        <div className="text-sm text-gray-500">No winners recorded.</div>
+                        <div className="text-sm text-gray-500">Keine Gewinner verzeichnet.</div>
                       )}
                     </div>
                   </div>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="bg-red-50 p-3 border-b border-red-100">
-                      <h5 className="text-red-800 font-semibold m-0">Losers</h5>
+                      <h5 className="text-red-800 font-semibold m-0">Verlierer</h5>
                     </div>
                     <div className="p-4">
                       {losers.length ? (
@@ -524,7 +450,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                           ))}
                         </ul>
                       ) : (
-                        <div className="text-sm text-gray-500">No losers recorded.</div>
+                        <div className="text-sm text-gray-500">Keine Verlierer verzeichnet.</div>
                       )}
                     </div>
                   </div>
@@ -554,7 +480,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         {/* Header with background */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-4 px-6">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">Triple Spiel</h2>
+            <h2 className="text-2xl font-bold text-white">Triple Game</h2>
             <div className="flex items-center gap-4">
               <div className="bg-white/20 text-white rounded-full px-4 py-1 flex items-center gap-2">
                 <FiClock className="text-white/80" />
@@ -584,60 +510,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               {errorMessage}
             </Alert>
           )}
-          {currentTurnPlayer && (
-            <Alert variant="info" className="mb-4">
-              <strong>Current turn:</strong> {currentTurnPlayer} {currentTurnPlayer === username && '(You)'}
-            </Alert>
-          )}
           {/* Operation UI is rendered inside the phase content via OperationPanel */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Game content area */}
-            <div className="lg:col-span-2">
-              <div
-                className="game-messages p-4 bg-gray-50 rounded-xl mb-6 shadow-sm max-h-[55vh] md:max-h-[60vh] overflow-y-auto"
-                data-testid="game-messages"
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <FiMessageCircle className="text-indigo-600 text-xl" />
-                  <h3 className="text-xl font-semibold text-gray-800">Spielnachrichten</h3>
-                </div>
-                {messages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className="message mb-3"
-                    data-testid={`message-${index}`}
-                  >
-                    {msg.type === "system" ? (
-                      <div 
-                        className="system-message bg-indigo-50 text-indigo-700 p-3 rounded-lg border border-indigo-100" 
-                        data-testid={`system-message-${index}`}
-                      >
-                        {msg.text}
-                      </div>
-                    ) : msg.type === "prompt" ? (
-                      <div className="prompt-message bg-amber-50 p-3 rounded-lg border border-amber-100 text-amber-800">
-                        <strong className="font-semibold">Aufforderung: </strong> {msg.text}
-                      </div>
-                    ) : (
-                      <div className="player-message bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-                        <strong className="font-semibold text-indigo-700">{msg.from}: </strong> {msg.text}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              
-              {/* Phase-specific content */}
-              <div className="phase-content bg-white rounded-xl p-4 border border-gray-100 shadow-sm" data-testid="phase-content">
-                {renderPhaseContent()}
-              </div>
-
-              {/* Voting input moved into phase content (dropdown) to simplify layout */}
-            </div>
-
-            {/* Player info sidebar */}
-            <div className="min-h-0">
-              <GameInfo className="mb-6" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Players list */}
+            <div className="min-h-0 order-2 lg:order-1">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-h-[60vh] md:max-h-[70vh] overflow-y-auto">
                 <div className="bg-indigo-50 p-4 border-b border-indigo-100">
                   <div className="flex items-center gap-2">
@@ -658,21 +534,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                         <div className="flex flex-col">
                           <span className="font-medium">
                             {player.username}
-                            {player.username === username && " (You)"}
+                            {player.username === username && " (Du)"}
                           </span>
                           <span className="text-xs text-gray-600">
                             Operation: {
                               (() => {
                                 const pub = publicOperations[player.username];
-                                // Default: pending until publicly announced
-                                let label = 'pending...';
+                                let label = 'ausstehend...';
                                 if (player.username === username) {
-                                  // The receiving player always sees their real operation name when available
                                   label = myOperation?.name
-                                    || (pub ? (/hidden/i.test(pub) ? 'hidden' : pub) : 'pending...');
+                                    || (pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...');
                                 } else {
-                                  // Other players see the public placeholder or name; hidden ops show as 'hidden'
-                                  label = pub ? (/hidden/i.test(pub) ? 'hidden' : pub) : 'pending...';
+                                  label = pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...';
                                 }
                                 return label;
                               })()
@@ -698,7 +571,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                           pill
                           className="py-2 px-3"
                         >
-                          {player.team === 'impostor' ? 'Impostor' : 'Agent'}
+                          {player.team === 'impostor' ? 'Hochstapler' : 'Agent'}
                         </Badge>
                       )}
                     </ListGroup.Item>
@@ -706,6 +579,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 </ListGroup>
               </div>
             </div>
+
+            {/* Center: Combined status + operation info and phase content */}
+            <div className="order-1 lg:order-2">
+              <GameInfo className="mb-6" />
+              <div className="phase-content bg-white rounded-xl p-4 border border-gray-100 shadow-sm" data-testid="phase-content">
+                {renderPhaseContent()}
+              </div>
+            </div>
+            {/* Right column removed: Spielnachrichten functionality deleted */}
           </div>
         </div>
       </div>
