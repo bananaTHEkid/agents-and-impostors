@@ -8,17 +8,17 @@ const NoInputRenderer: React.FC<OperationRendererProps> = ({ operation, username
   return (
     <div>
       <div className="mb-2">
-        <h5 className="mb-1">Your Operation: {operation.name}</h5>
+        <h5 className="mb-1">Deine Operation: {operation.name}</h5>
       </div>
 
-      {info.grudgeTarget && <p><strong>Grudge Target:</strong> {info.grudgeTarget}</p>}
+      {info.grudgeTarget && <p><strong>Groll-Ziel:</strong> {info.grudgeTarget}</p>}
       {info.revealedPlayers && Array.isArray(info.revealedPlayers) && (
-        <p><strong>Revealed:</strong> {info.revealedPlayers.join(' and ')}</p>
+        <p><strong>Aufgedeckt:</strong> {info.revealedPlayers.join(' und ')}</p>
       )}
 
       {!operation.used && (
         <div className="mt-3">
-          <button className="btn btn-primary btn-sm" disabled={disabled} onClick={() => onSubmit?.({ accepted: true })} data-testid="accept-assignment-btn">Accept Assignment</button>
+          <button className="btn btn-primary btn-sm" disabled={disabled} onClick={() => onSubmit?.({ accepted: true })} data-testid="accept-assignment-btn">Zuweisung akzeptieren</button>
         </div>
       )}
     </div>

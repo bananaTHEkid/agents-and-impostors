@@ -77,7 +77,7 @@ export async function validateVote(
         }
         return { isValid: true };
     } catch (error) {
-        console.error("Error validating vote:", error);
+        console.error("Fehler bei der Validierung der Stimme:", error);
         return { isValid: false, error: "Internal server error during vote validation" };
     }
 }
@@ -116,7 +116,7 @@ export async function recordVote(
         });
         return true;
     } catch (error) {
-        console.error("Error recording vote:", error);
+        console.error("Fehler beim Speichern der Stimme:", error);
         return false;
     }
 }
@@ -214,7 +214,7 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
                 roundResult
             );
         } catch (error) {
-            console.error(`Error processing operation ${player.operation} for player ${player.username}:`, error);
+            console.error(`Fehler bei der Verarbeitung der Operation ${player.operation} für Spieler ${player.username}:`, error);
         }
     }
 }
@@ -398,7 +398,7 @@ export async function generateOperationInfo(
                 delete generatedInfo.availablePlayers;
             }
         } catch (err) {
-            console.error(`Error selecting targets for operation ${operationName} for ${player}:`, err);
+            console.error(`Fehler bei der Zielauswahl für Operation ${operationName} für ${player}:`, err);
         }
 
         // Persist the prepared operation info (immutable/server-chosen)
@@ -413,7 +413,7 @@ export async function generateOperationInfo(
                 operation: operationName,
                 info: generatedInfo,
             });
-            console.log(`Operation '${operationName}' with info sent to ${player} (${socketId})`);
+            console.log(`Operation '${operationName}' mit Informationen an ${player} gesendet (${socketId})`);
         } else {
             // Player offline — info persisted for later replay on reconnect
             console.warn(`Socket ID for player ${player} not found when sending operation info. Saved to DB for later delivery.`);
@@ -535,7 +535,7 @@ export async function endRound(
         await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
         await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
     } catch (err) {
-        console.error(`Error cleaning up lobby data for ${lobbyId}:`, err);
+        console.error(`Fehler beim Bereinigen der Lobbydaten für ${lobbyId}:`, err);
     }
 
     return 'game_end';
@@ -555,9 +555,9 @@ export const scheduleLobbyCleanupp = (lobbyId: string, delayMs: number = 300000)
             await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
             await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
             await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
-            console.log(`Completed lobby ${lobbyId} cleaned up`);
+            console.log(`Abgeschlossene Lobby ${lobbyId} bereinigt`);
         } catch (error) {
-            console.error(`Error cleaning up lobby ${lobbyId}:`, error);
+            console.error(`Fehler beim Bereinigen der Lobby ${lobbyId}:`, error);
         }
     }, delayMs);
 };
@@ -582,7 +582,7 @@ export const saveConnectionSession = async (
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         `, [socketId, username, lobbyId, lobbyCode]);
     } catch (error) {
-        console.error("Error saving connection session:", error);
+        console.error("Fehler beim Speichern der Verbindungssitzung:", error);
     }
 };
 
@@ -600,7 +600,7 @@ export const getConnectionSession = async (username: string): Promise<any | null
             ORDER BY last_heartbeat DESC LIMIT 1
         `, [username]);
     } catch (error) {
-        console.error("Error retrieving connection session:", error);
+        console.error("Fehler beim Abrufen der Verbindungssitzung:", error);
         return null;
     }
 };
@@ -614,7 +614,7 @@ export const removeConnectionSession = async (socketId: string): Promise<void> =
         const db = getDB();
         await db.run("DELETE FROM connection_sessions WHERE socket_id = ?", [socketId]);
     } catch (error) {
-        console.error("Error removing connection session:", error);
+        console.error("Fehler beim Entfernen der Verbindungssitzung:", error);
     }
 };
 
@@ -628,8 +628,8 @@ export const cleanupStaleConnections = async (): Promise<void> => {
             DELETE FROM connection_sessions 
             WHERE datetime(last_heartbeat) < datetime('now', '-1 hour')
         `);
-        console.log("Stale connections cleaned up");
+        console.log("Veraltete Verbindungen bereinigt");
     } catch (error) {
-        console.error("Error cleaning up stale connections:", error);
+        console.error("Fehler beim Bereinigen veralteter Verbindungen:", error);
     }
 };

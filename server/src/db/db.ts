@@ -84,10 +84,10 @@ export const initDB = async (useMemory = false) => {
             )
         `);
 
-        console.log("Database initialized successfully");
+        console.log("Datenbank erfolgreich initialisiert");
         return dbInstance;
     } catch (error) {
-        console.error("Error initializing database:", error);
+        console.error("Fehler beim Initialisieren der Datenbank:", error);
         throw error;
     }
 };
@@ -118,7 +118,7 @@ export const withTransaction = async <T>(
         return result;
     } catch (error) {
         await db.exec("ROLLBACK");
-        console.error("Transaction failed, rolling back:", error);
+        console.error("Transaktion fehlgeschlagen, wird zurückgesetzt:", error);
         throw error;
     }
 };

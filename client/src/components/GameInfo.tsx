@@ -139,13 +139,13 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   return (
     <div className={`bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 ${className || ''}`}>
       <div className="bg-indigo-50 p-4 border-b border-indigo-100">
-        <h3 className="text-xl font-semibold text-gray-800">Your Status</h3>
+        <h3 className="text-xl font-semibold text-gray-800">Dein Status</h3>
       </div>
       <div className="p-4">
         {team && (
           <div className="mb-3">
             <div className={`${team === 'impostor' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'} p-3 rounded-lg border text-center`}>
-              <span className="font-medium">You are an {team === 'impostor' ? 'Impostor' : 'Agent'}.</span>
+              <span className="font-medium">Du bist ein {team === 'impostor' ? 'Hochstapler' : 'Agent'}.</span>
             </div>
           </div>
         )}
@@ -165,16 +165,16 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
               )}
 
               {operationInfo && (operationInfo as any).targetPlayer && (
-                <p className="text-sm text-gray-600">You selected {(operationInfo as any).targetPlayer}.</p>
+                <p className="text-sm text-gray-600">Du hast {(operationInfo as any).targetPlayer} ausgewählt.</p>
               )}
               {operationInfo && (operationInfo as any).targetPlayer1 && (operationInfo as any).targetPlayer2 && (
-                <p className="text-sm text-gray-600">You selected {(operationInfo as any).targetPlayer1} and {(operationInfo as any).targetPlayer2}.</p>
+                <p className="text-sm text-gray-600">Du hast {(operationInfo as any).targetPlayer1} und {(operationInfo as any).targetPlayer2} ausgewählt.</p>
               )}
             </div>
           </div>
         )}
         {!team && !showOperationInfo && (
-          <p className="text-gray-500 text-sm">Waiting for assignment...</p>
+          <p className="text-gray-500 text-sm">Warte auf Zuweisung...</p>
         )}
       </div>
     </div>

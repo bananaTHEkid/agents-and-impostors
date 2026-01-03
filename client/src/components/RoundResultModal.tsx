@@ -31,19 +31,19 @@ const RoundResultModal: React.FC<RoundResultModalProps> = ({
   return (
     <Modal show={show} onHide={onHide} centered size="lg">
       <Modal.Header closeButton>
-        <Modal.Title>Round {roundNumber} Results</Modal.Title>
+        <Modal.Title>Ergebnisse Runde {roundNumber}</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         <div className="mb-4">
-          <h4>Round Winner: 
+          <h4>Rundensieger: 
             <Badge bg={winner === 'agents' ? 'primary' : 'danger'} className="ms-2">
-              {winner === 'agents' ? 'Agents' : 'Impostors'}
+              {winner === 'agents' ? 'Agenten' : 'Hochstapler'}
             </Badge>
           </h4>
         </div>
 
         <div className="mb-4">
-          <h5>Eliminated Players:</h5>
+          <h5>Ausgeschiedene Spieler:</h5>
           {eliminatedPlayers.length > 0 ? (
             <ul className="list-group">
               {eliminatedPlayers.map(player => (
@@ -53,16 +53,16 @@ const RoundResultModal: React.FC<RoundResultModalProps> = ({
               ))}
             </ul>
           ) : (
-            <p>No players were eliminated this round.</p>
+            <p>In dieser Runde ist kein Spieler ausgeschieden.</p>
           )}
         </div>
 
-        <h5>All Votes:</h5>
+        <h5>Alle Stimmen:</h5>
         <Table striped bordered hover>
           <thead>
             <tr>
-              <th>Voter</th>
-              <th>Voted For</th>
+              <th>Stimmender</th>
+              <th>Gewählt</th>
             </tr>
           </thead>
           <tbody>
@@ -78,11 +78,11 @@ const RoundResultModal: React.FC<RoundResultModalProps> = ({
       <Modal.Footer>
         {isGameOver ? (
           <Button variant="primary" onClick={onHide}>
-            Game Over - Return to Lobby
+            Spiel beendet – Zurück zur Lobby
           </Button>
         ) : (
           <Button variant="primary" onClick={onNextRound}>
-            Continue to Next Round
+            Weiter zur nächsten Runde
           </Button>
         )}
       </Modal.Footer>

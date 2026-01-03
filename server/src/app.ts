@@ -36,7 +36,7 @@ if (process.env.NODE_ENV !== 'production') {
       }
       res.json({ success: true, lobbies });
     } catch (err) {
-      console.error('Error fetching debug lobbies:', err);
+      console.error('Fehler beim Abrufen der Debug-Lobbies:', err);
       res.status(500).json({ success: false, error: 'Failed to fetch lobbies' });
     }
   }) as express.RequestHandler);
@@ -50,7 +50,7 @@ if (process.env.NODE_ENV !== 'production') {
       }
       res.json({ success: true, players: result.players });
     } catch (err) {
-      console.error('Error fetching lobby players:', err);
+      console.error('Fehler beim Abrufen der Lobby-Spieler:', err);
       res.status(500).json({ success: false, error: 'Failed to fetch players' });
     }
   }) as express.RequestHandler);
@@ -63,10 +63,10 @@ if (process.env.NODE_ENV !== 'production') {
       await db.run('DELETE FROM rounds');
       await db.run('DELETE FROM connection_sessions');
       await db.run('DELETE FROM lobbies');
-      console.log('Debug: database reset via /debug/reset-db');
+      console.log('Debug: Datenbank über /debug/reset-db zurückgesetzt');
       res.json({ success: true });
     } catch (err) {
-      console.error('Error resetting database:', err);
+      console.error('Fehler beim Zurücksetzen der Datenbank:', err);
       res.status(500).json({ success: false, error: 'Failed to reset database' });
     }
   });
@@ -87,11 +87,11 @@ app.post('/create-lobby', async (req: Request, res: Response): Promise<void> => 
 
     const playerRows = await getDB().all('SELECT username FROM players WHERE lobby_id = ?', [lobbyId]);
 
-    console.log(`[create-lobby] Created lobby ${lobbyCode} (${lobbyId}) with initial player:`, playerRows);
+    console.log(`[create-lobby] Lobby ${lobbyCode} (${lobbyId}) mit initialem Spieler erstellt:`, playerRows);
 
     res.json({ lobbyId, lobbyCode, accessToken });
   } catch (error) {
-    console.error('Error creating lobby:', error);
+    console.error('Fehler beim Erstellen der Lobby:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to create lobby';
     res.status(400).json({ error: errorMessage });
   }

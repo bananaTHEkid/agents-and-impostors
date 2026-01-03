@@ -59,7 +59,7 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
           disabled={!isAllowed}
         />
         {!isAllowed && isMyTurn === false && (
-          <div className="text-sm text-gray-500 mt-2">It's not your turn — wait for the current player to act.</div>
+          <div className="text-sm text-gray-500 mt-2">Du bist nicht an der Reihe — warte auf den aktuellen Spieler.</div>
         )}
       </div>
     </div>

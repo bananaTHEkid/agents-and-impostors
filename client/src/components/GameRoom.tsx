@@ -387,17 +387,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       case GamePhase.WAITING:
         return (
           <div className="text-center p-4">
-            <h4>Waiting for game to start...</h4>
+            <h4>Warte auf Spielstart...</h4>
           </div>
         );
         
       case GamePhase.TEAM_ASSIGNMENT:
         return (
           <div className="text-center p-4">
-            <h4 className="mb-3">Team Assignment Phase</h4>
-            <p className="small text-muted">The game master is assigning teams...</p>
+            <h4 className="mb-3">Team Zuweisung...</h4>
             <div className="d-flex flex-column align-items-center">
-                <p className="small text-muted">Players are waiting: {players.map(p => p.username).join(', ')}</p>
+                <p className="small text-muted">Wartende Spieler: {players.map(p => p.username).join(', ')}</p>
             </div>
           </div>
         );
@@ -405,8 +404,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       case GamePhase.OPERATION_ASSIGNMENT:
         return (
           <div className="text-center p-4">
-            <h4>Operation Assignment Phase</h4>
-            <p>Special operations are being assigned to players...</p>
+            <h4 aria-label="Operation Assignment Phase">Operationszuweisungsphase</h4>
+            <p>Spezielle Operationen werden den Spielern zugewiesen…</p>
             <div className="mt-3">
               <OperationPanel
                 operation={myOperation ? { name: myOperation.name, info: myOperation.info, used: myOperation.used } : null}
@@ -423,8 +422,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
       case GamePhase.VOTING:
         return (
           <div>
-            <h4>Voting Phase</h4>
-            <p>Vote for a player you suspect is an impostor:</p>
+            <h4 aria-label="Voting Phase">Abstimmungsphase</h4>
+            <p>Stimme für den Spieler, den du für einen Hochstapler hältst:</p>
             {/* Reusable voting panel */}
             <VotingPanel players={players} currentUsername={username} lobbyCode={lobbyCode} />
           </div>
@@ -436,7 +435,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         const losers = (gameData?.results || []).filter(r => ['lose', 'lost', 'defeat'].includes(norm(r.win_status)));
         return (
           <div className="text-center p-4">
-            <h4>Game Completed</h4>
+            <h4>Spiel beendet</h4>
             {gameData?.results && (
               <div className="results mt-3 text-left">
                 {/* Simple textual summary to satisfy unit tests */}
@@ -538,7 +537,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               onClick={handleLeaveGame}
               data-testid="exit-game-button"
             >
-              Leave Game
+              Spiel verlassen
             </Button>
           </div>
         );
@@ -555,7 +554,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         {/* Header with background */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-4 px-6">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">Triple Game</h2>
+            <h2 className="text-2xl font-bold text-white">Triple Spiel</h2>
             <div className="flex items-center gap-4">
               <div className="bg-white/20 text-white rounded-full px-4 py-1 flex items-center gap-2">
                 <FiClock className="text-white/80" />
@@ -568,7 +567,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 data-testid="exit-game-button"
               >
                 <FiLogOut />
-                Leave Game
+                Spiel verlassen
               </Button>
             </div>
           </div>
@@ -600,7 +599,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               >
                 <div className="flex items-center gap-2 mb-4">
                   <FiMessageCircle className="text-indigo-600 text-xl" />
-                  <h3 className="text-xl font-semibold text-gray-800">Game Messages</h3>
+                  <h3 className="text-xl font-semibold text-gray-800">Spielnachrichten</h3>
                 </div>
                 {messages.map((msg, index) => (
                   <div
@@ -617,7 +616,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                       </div>
                     ) : msg.type === "prompt" ? (
                       <div className="prompt-message bg-amber-50 p-3 rounded-lg border border-amber-100 text-amber-800">
-                        <strong className="font-semibold">Prompt: </strong> {msg.text}
+                        <strong className="font-semibold">Aufforderung: </strong> {msg.text}
                       </div>
                     ) : (
                       <div className="player-message bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
@@ -643,7 +642,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 <div className="bg-indigo-50 p-4 border-b border-indigo-100">
                   <div className="flex items-center gap-2">
                     <FiUsers className="text-indigo-600 text-xl" />
-                    <h3 className="text-xl font-semibold text-gray-800">Players</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">Spieler</h3>
                   </div>
                 </div>
                 <ListGroup variant="flush" className="rounded-none">
@@ -682,12 +681,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                         </div>
                       </div>
                       {player.username === currentTurnPlayer && (
-                        <Badge bg="warning" pill className="text-dark py-2 px-3">Current Turn</Badge>
+                        <Badge bg="warning" pill className="text-dark py-2 px-3">Aktueller Zug</Badge>
                       )}
                       {currentPhase === GamePhase.TEAM_ASSIGNMENT && (
                         <Badge bg="secondary" pill className="flex items-center gap-1 py-2 px-3">
                           <span className="spinner-grow spinner-grow-sm" role="status" aria-hidden="true"></span>
-                          Assigning
+                          Zuweisung
                         </Badge>
                       )}
                       {currentPhase !== GamePhase.WAITING && 

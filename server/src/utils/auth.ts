@@ -60,7 +60,7 @@ export const decodeToken = (token: string, secret: string = JWT_SECRET): LobbyAc
 
     return payload;
   } catch (error) {
-    console.error("Token decode error:", error);
+    console.error("Fehler beim Dekodieren des Tokens:", error);
     return null;
   }
 };

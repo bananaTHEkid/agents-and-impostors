@@ -79,9 +79,9 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       <div className="bg-indigo-50 p-3 border-b border-indigo-100 flex items-center justify-between">
-        <h4 className="text-base font-semibold text-gray-800 m-0">Voting</h4>
+        <h4 className="text-base font-semibold text-gray-800 m-0">Abstimmung</h4>
         <div className="text-sm text-gray-600">
-          {progress.votedCount} / {progress.activeCount} voted
+          {progress.votedCount} / {progress.activeCount} abgestimmt
         </div>
       </div>
       <div className="p-4">
@@ -93,7 +93,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
 
         {hasVoted ? (
           <div className="mb-4 bg-green-50 text-green-700 border border-green-100 p-3 rounded-lg">
-            Your vote for <strong>{selectedPlayer}</strong> has been recorded.
+            Deine Stimme für <strong>{selectedPlayer}</strong> wurde gezählt.
           </div>
         ) : (
           <>
@@ -130,11 +130,11 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       {votedPlayers.has(player.username) && (
-                        <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">Voted</span>
+                        <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">Abgestimmt</span>
                       )}
                       {player.team && (
                         <span className={"inline-flex items-center text-xs font-medium px-2 py-1 rounded-full border " + (player.team === 'agent' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100')}>
-                          {player.team === 'agent' ? 'Agent' : 'Impostor'}
+                          {player.team === 'agent' ? 'Agent' : 'Hochstapler'}
                         </span>
                       )}
                     </div>
@@ -149,7 +149,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
 
         <div className="mt-4">
           <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-            <span>{progress.votedCount} of {progress.activeCount} players have voted</span>
+            <span>{progress.votedCount} von {progress.activeCount} Spielern haben abgestimmt</span>
             <span>{progress.pct}%</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">

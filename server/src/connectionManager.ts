@@ -88,9 +88,9 @@ async function hardDeleteLobby(lobbyCode: string, io: Server): Promise<void> {
                 if (sock) try { sock.disconnect(true); } catch {}
             }
         }
-        console.log(`[Cleanup] Deleted empty lobby ${lobbyCode} and all associated state.`);
+        console.log(`[Bereinigung] Leere Lobby ${lobbyCode} und alle zugehörigen Zustände gelöscht.`);
     } catch (err) {
-        console.error(`[Cleanup] Failed deleting lobby ${lobbyCode}:`, err);
+        console.error(`[Bereinigung] Löschen der Lobby ${lobbyCode} fehlgeschlagen:`, err);
     }
 }
 
@@ -99,7 +99,7 @@ export function cleanupOldSocket(username: string, currentSocketId: string, io: 
     if (oldSocketId && oldSocketId !== currentSocketId) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
         if (oldSocket) {
-            console.log(`Disconnecting old socket for user ${username}: ${oldSocketId}`);
+            console.log(`Trenne alten Socket für Benutzer ${username}: ${oldSocketId}`);
             oldSocket.disconnect(true);
         }
         
@@ -115,7 +115,7 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
     const lobbyCode = socketToLobbyMap.get(socketId);
     
     if (username && lobbyCode) {
-        console.log(`Player ${username} disconnected from lobby ${lobbyCode}`);
+        console.log(`Spieler ${username} wurde von Lobby ${lobbyCode} getrennt`);
         
         try {
             // Import getDB and gameService for session cleanup
@@ -132,7 +132,7 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
                 try {
                     await gameService.removeConnectionSession(socketId);
                 } catch (sessionError) {
-                    console.error(`Error removing connection session for ${username}:`, sessionError);
+                    console.error(`Fehler beim Entfernen der Verbindungssitzung für ${username}:`, sessionError);
                 }
                 
                 // Only delete player if lobby is still in waiting phase
@@ -160,18 +160,18 @@ export async function handleDisconnect(socketId: string, io: Server): Promise<vo
                         }
 
                         if (result.lobbyClosed) {
-                            console.log(`Lobby ${lobbyCode} was closed (no players remaining)`);
+                            console.log(`Lobby ${lobbyCode} wurde geschlossen (keine Spieler verbleiben)`);
                         }
                     } else {
-                        console.error(`Failed to remove player ${username} from lobby ${lobbyCode}:`, result.error);
+                        console.error(`Fehler beim Entfernen des Spielers ${username} aus Lobby ${lobbyCode}:`, result.error);
                     }
                 } else {
                     // Game in progress - keep player for reconnection
-                    console.log(`Game in progress for ${username} - keeping player record for reconnection`);
+                    console.log(`Spiel läuft für ${username} – Spieler wird für Wiederverbindung beibehalten`);
                 }
             }
         } catch (error) {
-            console.error(`Error handling disconnect for ${username}:`, error);
+            console.error(`Fehler beim Verarbeiten der Trennung für ${username}:`, error);
         }
     }
     
@@ -199,8 +199,8 @@ export function getConnectionCount(): number {
 
 // Debug function to log current connections
 export function logConnections(): void {
-    console.log('Current connections:');
-    console.log('Users to sockets:', Object.fromEntries(userToSocketIdMap));
-    console.log('Sockets to users:', Object.fromEntries(socketToUsernameMap));
-    console.log('Sockets to lobbies:', Object.fromEntries(socketToLobbyMap));
+    console.log('Aktuelle Verbindungen:');
+    console.log('Benutzer → Sockets:', Object.fromEntries(userToSocketIdMap));
+    console.log('Sockets → Benutzer:', Object.fromEntries(socketToUsernameMap));
+    console.log('Sockets → Lobbies:', Object.fromEntries(socketToLobbyMap));
 }

@@ -17,7 +17,7 @@ const VotingStatus: React.FC<VotingStatusProps> = ({
   if (eliminated) {
     return (
       <Badge bg="danger" pill>
-        Eliminated
+        Ausgeschieden
       </Badge>
     );
   }
@@ -25,14 +25,14 @@ const VotingStatus: React.FC<VotingStatusProps> = ({
   if (votedPlayers.has(username)) {
     return (
       <Badge bg="success" pill>
-        Voted ✓
+        Abgestimmt ✓
       </Badge>
     );
   }
 
   return (
     <Badge bg="secondary" pill>
-      {isCurrentPlayer ? 'Your Turn' : 'Waiting'}
+      {isCurrentPlayer ? 'Du bist dran' : 'Wartet'}
     </Badge>
   );
 };

@@ -54,9 +54,9 @@ const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, user
           />
         ))}
       </div>
-      <Button data-testid="operation-submit" type="submit" disabled={disabled || selectedCount !== 2}>Submit</Button>
+      <Button data-testid="operation-submit" type="submit" disabled={disabled || selectedCount !== 2}>Senden</Button>
       {options.length < 2 && (
-        <div className="text-muted small mt-2">Not enough players available to select two targets.</div>
+        <div className="text-muted small mt-2">Nicht genügend Spieler verfügbar, um zwei Ziele auszuwählen.</div>
       )}
     </Form>
   );

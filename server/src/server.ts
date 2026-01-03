@@ -17,9 +17,9 @@ export const startServer = async (port: number = parseInt(PORT.toString())) => {
 
   try {
     await gameService.cleanupStaleConnections();
-    console.log('Cleaned up stale connection sessions from previous sessions');
+    console.log('Veraltete Verbindungssitzungen aus vorherigen Sitzungen bereinigt');
   } catch (error) {
-    console.error('Error cleaning up stale connections on startup:', error);
+    console.error('Fehler beim Bereinigen veralteter Verbindungen beim Start:', error);
   }
 
   // Setup socket.io and handlers
@@ -28,7 +28,7 @@ export const startServer = async (port: number = parseInt(PORT.toString())) => {
   return new Promise<void>((resolve) => {
     const portNumber = port;
     server.listen(portNumber, HOST, () => {
-      console.log(`Server running on ${HOST}:${portNumber}`);
+      console.log(`Server läuft auf ${HOST}:${portNumber}`);
       startPlayerListRefresh();
       resolve();
     });

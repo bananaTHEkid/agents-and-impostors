@@ -22,21 +22,21 @@ export const startPlayerListRefresh = () => {
             }
           }
         } catch (lobbyError) {
-          console.error(`Error refreshing player list for lobby ${lobby.lobby_code}:`, lobbyError);
+          console.error(`Fehler beim Aktualisieren der Spielerliste für Lobby ${lobby.lobby_code}:`, lobbyError);
         }
       }
     } catch (error) {
-      console.error('Error in player list refresh cycle:', error);
+      console.error('Fehler im Aktualisierungszyklus der Spielerliste:', error);
     }
   }, REFRESH_INTERVAL_MS);
 
-  console.log(`Player list auto-refresh started (interval: ${REFRESH_INTERVAL_MS}ms)`);
+  console.log(`Automatische Aktualisierung der Spielerliste gestartet (Intervall: ${REFRESH_INTERVAL_MS}ms)`);
 };
 
 export const stopPlayerListRefresh = () => {
   if (playerListRefreshInterval) {
     clearInterval(playerListRefreshInterval);
     playerListRefreshInterval = null;
-    console.log('Player list auto-refresh stopped');
+    console.log('Automatische Aktualisierung der Spielerliste gestoppt');
   }
 };

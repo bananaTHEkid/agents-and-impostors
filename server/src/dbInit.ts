@@ -3,9 +3,9 @@ import { initDB } from './db/db';
 export const initializeDatabase = async (useInMemory: boolean = false) => {
   try {
     await initDB(useInMemory);
-    console.log('Database initialized with fresh tables');
+    console.log('Datenbank mit neuen Tabellen initialisiert');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    console.error('Fehler beim Initialisieren der Datenbank:', error);
     process.exit(1);
   }
 };

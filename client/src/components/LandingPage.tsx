@@ -318,8 +318,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
         <div className="p-4 md:p-8">
           <CardContent className="space-y-6">
             <div className="space-y-2 text-center mb-8">
-              <h3 className="text-2xl font-bold text-gray-800">Welcome to Triple</h3>
-              <p className="text-gray-500">Join or create a game to get started</p>
+              <h3 className="text-2xl font-bold text-gray-800">Willkommen bei Triple</h3>
+              <p className="text-gray-500">Finde oder Starte ein Spiel</p>
             </div>
 
             {errorMessage && (
@@ -350,14 +350,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                     htmlFor="username"
                     className="text-sm font-semibold text-indigo-600 uppercase tracking-wider"
                   >
-                    Username
+                    Spielername
                   </Label>
                   <Input
                     id="username"
                     type="text"
                     value={username}
                     onChange={handleUsernameChange}
-                    placeholder="Enter your username"
+                    placeholder="Benutzername eingeben"
+                    aria-label="Username"
                     disabled={isLoading}
                     className="bg-white px-4 py-2 rounded-lg shadow-sm border border-indigo-100"
                   />
@@ -368,14 +369,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                     htmlFor="lobbyCode"
                     className="text-sm font-semibold text-indigo-600 uppercase tracking-wider"
                   >
-                    Lobby Code
+                    Lobby-Code
                   </Label>
                   <Input
                     id="lobbyCode"
                     type="text"
                     value={lobbyCode}
                     onChange={handleLobbyCodeChange}
-                    placeholder="Enter lobby code"
+                    placeholder="Lobby-Code eingeben"
+                    aria-label="Lobby Code"
                     disabled={isLoading}
                     className="bg-white px-4 py-2 rounded-lg shadow-sm border border-indigo-100"
                   />
@@ -390,7 +392,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   data-testid="join-game-button"
                   aria-label="Join Game with Code"
                 >
-                  {isLoading ? "Joining..." : "Join Game"}
+                  {isLoading ? "Beitreten..." : "Beitreten"}
                 </Button>
 
                 <div className="relative">
@@ -398,7 +400,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-3 py-1 text-gray-500 font-semibold">Or</span>
+                    <span className="bg-white px-3 py-1 text-gray-500 font-semibold">Oder</span>
                   </div>
                 </div>
 
@@ -410,7 +412,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                   disabled={isLoading}
                   data-testid="create-game-button"
                 >
-                  {isLoading ? "Creating..." : "Create New Game"}
+                  {isLoading ? "Erstelle..." : "Erstelle neues Spiel"}
                 </Button>
               </div>
             </form>
@@ -434,7 +436,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                         d="M4 4v16h16M4 4l16 16"
                       />
                     </svg>
-                    <h3 className="text-xl font-semibold text-gray-800">Recent Games</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">zuvor gespielt</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     {recentGames.map(({ code }) => (
@@ -447,7 +449,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                           aria-label={`Quick access to lobby ${code}`}
                           data-testid={`quick-join-${code}`}
                         >
-                          Quick access
+                          Schnellstart
                         </Button>
                       </li>
                     ))}
@@ -477,7 +479,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                       d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
                     />
                   </svg>
-                  Game Rules & Help
+                  Spielregeln & Hilfe
                 </button>
               </div>
             </div>

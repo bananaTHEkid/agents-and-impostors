@@ -8,7 +8,7 @@ const ConfirmationRenderer: React.FC<OperationRendererProps> = ({ operation, onS
   return (
     <div className="mt-3">
       {info.message && <p>{info.message}</p>}
-      <Button disabled={disabled} onClick={() => onSubmit?.({ confirmed: true })}>Confirm</Button>
+      <Button disabled={disabled} onClick={() => onSubmit?.({ confirmed: true })}>Bestätigen</Button>
     </div>
   );
 };

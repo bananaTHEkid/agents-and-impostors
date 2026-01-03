@@ -100,11 +100,11 @@ export const OPERATION_CONFIG: Record<
                             );
                         }
                     } catch (err) {
-                        console.error(`Error processing grudge for player ${player.username}:`, err);
+                        console.error(`Fehler bei der Verarbeitung von 'Groll' für Spieler ${player.username}:`, err);
                     }
                 }
             } catch (error) {
-                console.error('Error in grudge.modifyWinCondition:', error);
+                console.error('Fehler in grudge.modifyWinCondition:', error);
             }
         },
     },
@@ -172,7 +172,7 @@ export const OPERATION_CONFIG: Record<
                         [targetWinStatus, lobbyId, player.username]
                     );
                 } catch (error) {
-                    console.error(`Error processing infatuation for player ${player.username}:`, error);
+                    console.error(`Fehler bei der Verarbeitung von 'Verliebtheit' für Spieler ${player.username}:`, error);
                 }
             }
         }
@@ -218,7 +218,7 @@ export const OPERATION_CONFIG: Record<
                     );
                     teams[player.username] = info.trueTeam;
                 } catch (error) {
-                    console.error(`Error processing sleeper agent operation for player ${player.username}:`, error);
+                    console.error(`Fehler bei der Verarbeitung von 'Schläferagent' für Spieler ${player.username}:`, error);
                 }
             }
         },
@@ -251,11 +251,11 @@ export const OPERATION_CONFIG: Record<
                             );
                         }
                     } catch (err) {
-                        console.error(`Error processing anonymous tip for player ${player.username}:`, err);
+                        console.error(`Fehler bei der Verarbeitung von 'Anonymer Hinweis' für Spieler ${player.username}:`, err);
                     }
                 }
             } catch (error) {
-                console.error('Error in anonymous tip.modifyWinCondition:', error);
+                console.error('Fehler in anonymous tip.modifyWinCondition:', error);
             }
         },
     },
@@ -320,11 +320,11 @@ export const OPERATION_CONFIG: Record<
                             [JSON.stringify(info), lobbyId, player.username]
                         );
                     } catch (err) {
-                        console.error(`Error processing danish intelligence for player ${player.username}:`, err);
+                        console.error(`Fehler bei der Verarbeitung von 'Dänischer Geheimdienst' für Spieler ${player.username}:`, err);
                     }
                 }
             } catch (error) {
-                console.error('Error in danish intelligence.modifyWinCondition:', error);
+                console.error('Fehler in danish intelligence.modifyWinCondition:', error);
             }
         }
     },
@@ -395,11 +395,11 @@ export const OPERATION_CONFIG: Record<
                             );
                         }
                     } catch (err) {
-                        console.error(`Error processing old photographs for player ${player.username}:`, err);
+                        console.error(`Fehler bei der Verarbeitung von 'Alte Fotografien' für Spieler ${player.username}:`, err);
                     }
                 }
             } catch (error) {
-                console.error('Error in old photographs.modifyWinCondition:', error);
+                console.error('Fehler in old photographs.modifyWinCondition:', error);
             }
         }
     },
@@ -440,7 +440,7 @@ export const OPERATION_CONFIG: Record<
                     );
                     teams[info.targetPlayer] = newTeam;
                 } catch (error) {
-                    console.error(`Error processing defector operation for player ${player.username}:`, error);
+                    console.error(`Fehler bei der Verarbeitung von 'Überläufer' für Spieler ${player.username}:`, error);
                 }
             }
         }
@@ -557,7 +557,7 @@ export const OPERATION_CONFIG: Record<
                         [JSON.stringify(info), lobbyId, player.username]
                     );
                 } catch (error) {
-                    console.error(`Error processing secret intel for player ${player.username}:`, error);
+                    console.error(`Fehler bei der Verarbeitung von 'Geheime Informationen' für Spieler ${player.username}:`, error);
                 }
             }
         }
@@ -629,7 +629,7 @@ export const OPERATION_CONFIG: Record<
                     teams[player.username] = targetRow.team;
                     teams[target] = emitterRow.team;
                 } catch (err) {
-                    console.error(`Error processing spy transfer for player ${player.username}:`, err);
+                    console.error(`Fehler bei der Verarbeitung von 'Agentenübertragung' für Spieler ${player.username}:`, err);
                 }
             }
         }

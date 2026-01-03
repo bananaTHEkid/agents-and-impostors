@@ -48,11 +48,11 @@ export async function joinLobby(
     const db = getDB();
     // Normalize lobby code to uppercase for case-insensitive lookup
     const normalizedCode = lobbyCode.trim().toUpperCase();
-    console.log(`[joinLobby] Looking for lobby with code: ${lobbyCode} (normalized: ${normalizedCode})`);
+    console.log(`[joinLobby] Suche nach Lobby mit Code: ${lobbyCode} (normalisiert: ${normalizedCode})`);
     const lobby = await db.get("SELECT * FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
 
     if (!lobby) {
-        console.log(`[joinLobby] Lobby not found for code: ${lobbyCode} (normalized: ${normalizedCode})`);
+        console.log(`[joinLobby] Keine Lobby für Code gefunden: ${lobbyCode} (normalisiert: ${normalizedCode})`);
         return { success: false, error: "Lobby does not exist" };
     }
 
@@ -130,7 +130,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
 
         return { success: true, lobbyClosed: false };
     } catch (error) {
-        console.error("Error in leaveLobby:", error);
+        console.error("Fehler in leaveLobby:", error);
         return { success: false, error: "Database error occurred" };
     }
 }
@@ -156,7 +156,7 @@ export async function getLobby(lobbyCode: string): Promise<Lobby | null> {
     // Cast to Lobby type; ensure the DB schema matches the Lobby interface or adjust accordingly.
     const lobbyData = await db.get("SELECT * FROM lobbies WHERE UPPER(lobby_code) = ?", [normalizedCode]);
     if (!lobbyData) {
-        console.log(`[getLobby] Lobby not found for code: ${lobbyCode} (normalized: ${normalizedCode})`);
+        console.log(`[getLobby] Lobby für Code nicht gefunden: ${lobbyCode} (normalisiert: ${normalizedCode})`);
         return null;
     }
     // Map database snake_case to TypeScript camelCase
