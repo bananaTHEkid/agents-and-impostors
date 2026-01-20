@@ -105,4 +105,43 @@ Note: Each operation may have a `modifyWinCondition` hook that runs after votes 
 - Vote validation helpers: `server/src/utils/validators.ts`.
 - Types and phase enums: `server/src/game-logic/types.ts`.
 
+## Server Security & Setup (updated)
+
+- Env vars: set `JWT_SECRET` (required) and optional `CLIENT_ORIGIN` (comma-separated origins for CORS).
+- Security middleware: Helmet headers and simple rate limiting added.
+- Token auth: `create-lobby` returns `accessToken`; `rejoin-game` requires a valid token matching `lobbyId` and `username`.
+
+### Quick commands
+
+```bash
+# Server
+cd server
+npm install
+npm run build
+npm run dev
+
+# Client
+cd ../client
+npm install
+npm run dev
+```
+
+### Example `.env` for server
+
+```
+JWT_SECRET=replace-with-strong-secret
+CLIENT_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
+```
+
+### Notes
+
+- Ensure the client uses the returned `accessToken` when reconnecting (passed to `rejoin-game`).
+- For production, restrict `CLIENT_ORIGIN` to your deployed frontend and consider stronger rate limits.
+
+## Client Notes (updated)
+
+- Hosts receive `accessToken` on lobby creation and the client stores it in `sessionStorage`.
+- The client passes `accessToken` to the server on `rejoin-game` when available.
+- If a rejoin fails due to missing/invalid token, the client navigates back to the lobby so users can rejoin fresh.
+
 

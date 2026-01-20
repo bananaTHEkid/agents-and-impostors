@@ -105,9 +105,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   useEffect(() => {
     if (!socket) return;
 
-    // Reconnect to the game if we have a lobby code
+    // Reconnect to the game if we have a lobby code (include accessToken when available)
     if (lobbyCode && username) {
-      socket.emit("rejoin-game", { lobbyCode, username });
+      const accessToken = sessionStorage.getItem("accessToken") || undefined;
+      socket.emit("rejoin-game", { lobbyCode, username, accessToken });
     }
 
     // Get initial game state
@@ -269,7 +270,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     });
 
     socket.on("error", (error: ErrorData) => {
-      console.error(`Error: ${error.message}`);
+      const msg = error.message || "Ein Fehler ist aufgetreten.";
+      console.error(`Error: ${msg}`);
+      setErrorMessage(msg);
+      // If token is missing or invalid on rejoin, return to lobby for a fresh join
+      if (/Zugriffstoken erforderlich|Ungültiges oder abgelaufenes Zugriffstoken/i.test(msg)) {
+        setTimeout(() => {
+          onExitGame();
+        }, 1200);
+      }
     });
 
     return () => {

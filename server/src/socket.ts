@@ -71,8 +71,21 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        if (accessToken) {
-          // optional verification left to existing auth utilities if used elsewhere
+        // Require valid access token for rejoin
+        if (!accessToken) {
+          socket.emit('error', { message: 'Zugriffstoken erforderlich für Wiedereintritt' });
+          return;
+        }
+        try {
+          const { verifyLobbyToken } = await import('./utils/auth');
+          const ok = verifyLobbyToken(accessToken, lobby.id, username);
+          if (!ok) {
+            socket.emit('error', { message: 'Ungültiges oder abgelaufenes Zugriffstoken' });
+            return;
+          }
+        } catch (verErr) {
+          socket.emit('error', { message: 'Token-Überprüfung fehlgeschlagen' });
+          return;
         }
 
         connectionManager.cleanupOldSocket(username, socket.id, io as Server);
@@ -703,7 +716,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        const defector = await db.get("SELECT username, operation_accepted FROM players WHERE lobby_id = ? AND operation = 'defector'", [lobbyId]);
+        const defector = await db.get("SELECT username, operation_accepted FROM players WHERE lobby_id = ? AND username = ? AND operation = 'defector'", [lobbyId, emitter]);
         if (!defector) {
           socket.emit('error', { message: 'Ungültige Überläufer-Operation' });
           return;
@@ -821,6 +834,14 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
           socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
           socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+          return;
+        }
+
+        // Verify emitter is using their assigned operation
+        const assignedRow = await db.get('SELECT operation FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, emitter]);
+        const assignedOpName = assignedRow?.operation;
+        if (!assignedOpName || (typeof operation === 'string' && assignedOpName.toLowerCase() !== operation.toLowerCase())) {
+          socket.emit('error', { message: 'Operation stimmt nicht mit der Zuweisung überein' });
           return;
         }
 

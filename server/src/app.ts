@@ -1,5 +1,7 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { getDB } from './db/db';
 import * as lobbyService from './lobby-manager/lobbyService';
 import { validateUsername } from './utils/validators';
@@ -23,6 +25,10 @@ app.use(express.json());
 
 // Express CORS middleware using the same allowed origins list.
 app.use(cors({ origin: defaultOrigins, credentials: true }));
+// Security headers
+app.use(helmet());
+// Basic rate limiting for public endpoints
+app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
 
 // Development-only debug endpoints
 if (process.env.NODE_ENV !== 'production') {
