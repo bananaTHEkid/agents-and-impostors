@@ -32,7 +32,10 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   const { socket } = useSocket();
   const [operation, setOperation] = useState<string | null>(null);
   const [operationInfo, setOperationInfo] = useState<OperationInfo | null>(null);
-  const [team, setTeam] = useState<string | null>(null);
+  const [team, setTeam] = useState<string | null>(() => {
+    const saved = sessionStorage.getItem('myTeam');
+    return saved ? saved : null;
+  });
   const [opAccepted, setOpAccepted] = useState<boolean>(false);
   const [confessionNotice, setConfessionNotice] = useState<{ fromPlayer: string; theirTeam: 'agent' | 'impostor' | string } | null>(null);
   const username: string | null = sessionStorage.getItem('username');
@@ -49,8 +52,19 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         // Record association for the player (no phase display here)
         if (data.impostors && data.impostors.includes(username || '')) {
           setTeam('impostor');
+          sessionStorage.setItem('myTeam', 'impostor');
         } else if (data.agents && data.agents.includes(username || '')) {
           setTeam('agent');
+          sessionStorage.setItem('myTeam', 'agent');
+        }
+      });
+
+      // Direct per-player team notification
+      socket.on('your-team', (data: { team: 'agent' | 'impostor' | string }) => {
+        if (data && data.team) {
+          const t = data.team === 'impostor' ? 'impostor' : 'agent';
+          setTeam(t);
+          sessionStorage.setItem('myTeam', t);
         }
       });
 
@@ -113,6 +127,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
       return () => {
         socket.off('operation-prepared');
         socket.off('team-assignment');
+        socket.off('your-team');
         socket.off('operation-assigned');
         socket.off('game-results');
         socket.off('player-joined');
@@ -158,7 +173,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         {team && (
           <div className="mb-3">
             <div className={`${team === 'impostor' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'} p-3 rounded-lg border text-center`}>
-              <span className="font-medium">Du bist ein {team === 'impostor' ? 'Hochstapler' : 'Agent'}.</span>
+              <span className="font-medium">Du bist ein {(operation && operation.toLowerCase() === 'spy transfer' && opAccepted) ? '???' : (team === 'impostor' ? 'Hochstapler' : 'Agent')}.</span>
             </div>
           </div>
         )}
@@ -183,13 +198,6 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
               )}
               {opAccepted && operationInfo && !operationInfo.revealed?.message && (operationInfo as any).message && (
                 <p className="mb-2">{(operationInfo as any).message}</p>
-              )}
-
-              {operationInfo && (operationInfo as any).targetPlayer && (
-                <p className="text-sm text-gray-600">Du hast {(operationInfo as any).targetPlayer} ausgewählt.</p>
-              )}
-              {operationInfo && (operationInfo as any).targetPlayer1 && (operationInfo as any).targetPlayer2 && (
-                <p className="text-sm text-gray-600">Du hast {(operationInfo as any).targetPlayer1} und {(operationInfo as any).targetPlayer2} ausgewählt.</p>
               )}
             </div>
           </div>

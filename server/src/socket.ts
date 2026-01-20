@@ -238,13 +238,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         io?.to(lobbyId).emit('game-started', { message: 'Spiel wurde gestartet!', players: playersInLobby.map((p: any) => p.username), phase: GamePhase.TEAM_ASSIGNMENT });
 
-        const allPlayers = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
-        for (const player of allPlayers) {
-          const playerSocketId = connectionManager.getSocketId(player.username);
-          if (playerSocketId) {
-            io?.to(playerSocketId).emit('your-team', { team: player.team, message: `Du bist ein ${player.team === 'impostor' ? 'Hochstapler' : 'Agent'}!` });
-          }
-        }
+        // Defer per-player team notifications until after assignment
 
         const assignResult = await gameService.assignTeamsAndOperations(lobbyId, playersInLobby.map((p: any) => p.username), io as Server, connectionManager.getSocketId);
         const playerOperations = assignResult.playerOperations;
@@ -258,6 +252,23 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           }
         } catch (err) {
           console.error('Failed to initialize turn order:', err);
+        }
+
+        // After teams and operations are assigned, emit final team info to room and players
+        try {
+          const teamRows: Array<{ username: string; team: string }> = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
+          const impostors = teamRows.filter(r => r.team === 'impostor').map(r => r.username);
+          const agents = teamRows.filter(r => r.team === 'agent').map(r => r.username);
+          io?.to(lobbyId).emit('team-assignment', { impostors, agents, phase: GamePhase.TEAM_ASSIGNMENT });
+          io?.to(lobbyId).emit('player-list', { players: teamRows as any });
+          for (const row of teamRows) {
+            const playerSocketId = connectionManager.getSocketId(row.username);
+            if (playerSocketId) {
+              io?.to(playerSocketId).emit('your-team', { team: row.team, message: `Du bist ein ${row.team === 'impostor' ? 'Hochstapler' : 'Agent'}!` });
+            }
+          }
+        } catch (teamEmitErr) {
+          console.error('Fehler beim Senden der Teamzuweisungen:', teamEmitErr);
         }
 
         await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.OPERATION_ASSIGNMENT, lobbyId]);
@@ -288,6 +299,31 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
       } catch (error) {
         socket.emit('error', { message: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    });
+
+    // Provide reliable current state on demand; replay team and player lists
+    socket.on('get-game-state', async ({ lobbyCode }) => {
+      try {
+        const db = getDB();
+        const lobby = await lobbyService.getLobby(lobbyCode);
+        if (!lobby) {
+          socket.emit('error', { message: 'Lobby nicht gefunden' });
+          return;
+        }
+        const lobbyId = lobby.id;
+        // Emit basic game-state
+        socket.emit('game-state', { phase: lobby.phase, current_round: lobby.current_round } as any);
+        // Emit player list with teams
+        const teamRows: Array<{ username: string; team: string }> = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
+        socket.emit('player-list', { players: teamRows as any });
+        // Emit team-assignment lists; client will match by its own username
+        const impostors = teamRows.filter(r => r.team === 'impostor').map(r => r.username);
+        const agents = teamRows.filter(r => r.team === 'agent').map(r => r.username);
+        socket.emit('team-assignment', { impostors, agents, phase: GamePhase.TEAM_ASSIGNMENT });
+      } catch (err) {
+        console.error('Fehler bei get-game-state:', err);
+        socket.emit('error', { message: 'Spielzustand konnte nicht abgerufen werden' });
       }
     });
 
