@@ -20,6 +20,7 @@ import {
 import GameInfo from "./GameInfo";
 import OperationPanel from '@/components/operations/OperationPanel';
 import VotingPanel from '@/components/VotingPanel';
+import GameRulesModal from '@/components/GameRulesModal';
 interface PlayerOperation {
   name: string;
   info: {
@@ -70,6 +71,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   // Track publicly announced operation names (or hidden markers) per player
   const [publicOperations, setPublicOperations] = useState<Record<string, string>>({});
   const username: string = sessionStorage.getItem("username") ?? "";
+  const [showRules, setShowRules] = useState(false);
 
   // Compute voted counts from finalRound unconditionally to keep hook order stable
   const votedCounts = useMemo(() => {
@@ -486,6 +488,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 <FiClock className="text-white/80" />
                 <span>Phase: {currentPhase}</span>
               </div>
+              <button 
+                type="button"
+                className="flex items-center gap-2 py-2 px-3 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-colors duration-200"
+                onClick={() => setShowRules(true)}
+                data-testid="game-rules-button"
+              >
+                ℹ️
+                Spielregeln
+              </button>
               <Button 
                 variant="light" 
                 className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-100 transition-colors duration-200" 
@@ -500,6 +511,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         </div>
         
         <div className="p-4 md:p-6">
+          <GameRulesModal open={showRules} onClose={() => setShowRules(false)} />
           {errorMessage && (
             <Alert
               variant="danger"

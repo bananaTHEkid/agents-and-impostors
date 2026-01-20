@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"; // Shadcn label
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Shadcn alert
 import { API_BASE_URL } from "@/config";
 import { SocketContext } from "@/contexts/SocketContext";
+import GameRulesModal from "@/components/GameRulesModal";
 
 interface JoinSuccessData {
   lobbyCode: string;
@@ -41,7 +42,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
-  const [, setShowGameRules] = useState(false);
+  const [showGameRules, setShowGameRules] = useState(false);
 
   const usernameRef = useRef(username);
 
@@ -309,6 +310,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
       className="min-h-screen w-screen overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6"
       data-testid="landing-page"
     >
+      {/* Game Rules Modal */}
+      <GameRulesModal open={showGameRules} onClose={() => setShowGameRules(false)} />
       <div className="max-w-xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header with background */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-6 px-8">
