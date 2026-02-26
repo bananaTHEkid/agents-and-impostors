@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Button, Alert } from "react-bootstrap";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { useSocket } from '@/Socket/useSocket';
 import { GameLobbyProps, Player } from "@/types";
 import { FiCopy, FiLogOut, FiPlay, FiUsers } from "react-icons/fi";
@@ -324,26 +325,26 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
           <div className="p-4 md:p-8">
             {/* Fehlermeldung */}
             {errorMessage && (
-                <Alert
-                    variant="danger"
-                    onClose={() => setErrorMessage("")}
-                    dismissible
-                    className="mb-6 rounded-lg border-0 shadow-sm"
-                >
-                  {errorMessage}
-                </Alert>
+              <Alert
+                variant="destructive"
+                onClose={() => setErrorMessage("")}
+                dismissible
+                className="mb-6 rounded-lg"
+              >
+                {errorMessage}
+              </Alert>
             )}
 
             {/* Benachrichtigung */}
             {notification && (
-                <Alert
-                    variant="info"
-                    onClose={() => setNotification("")}
-                    dismissible
-                    className="mb-6 rounded-lg border-0 shadow-sm"
-                >
-                  {notification}
-                </Alert>
+              <Alert
+                variant="info"
+                onClose={() => setNotification("")}
+                dismissible
+                className="mb-6 rounded-lg"
+              >
+                {notification}
+              </Alert>
             )}
 
             {/* Lobby-Info-Bereich */}
@@ -357,9 +358,10 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                 </div>
 
                 <Button
-                    variant="outline-primary"
-                    onClick={copyLobbyCode}
-                    className="flex items-center gap-2 py-2 px-4 hover:bg-indigo-100 transition-colors duration-200 w-full sm:w-auto"
+                  type="button"
+                  variant="outline"
+                  onClick={copyLobbyCode}
+                  className="flex items-center gap-2 w-full sm:w-auto border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                 >
                   <span>{FiCopy({ className: "text-indigo-600" })}</span>
                   <span>Code kopieren</span>
@@ -440,16 +442,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
             {/* Aktions-Buttons */}
             <div className="flex flex-col sm:flex-row justify-between gap-4 mt-6 md:mt-8">
               <Button
-                  variant="outline-danger"
-                  onClick={handleLeaveLobby}
-                  disabled={isLoading}
-                  data-testid="exit-game-button"
-                  className="flex items-center justify-center gap-2 py-3 px-6 text-base font-medium hover:bg-red-50 transition-colors duration-200"
-                  // Force navigation to landing if button is clicked multiple times
-                  onDoubleClick={() => {
-                    sessionStorage.removeItem("lobbyCode");
-                    onExitLobby();
-                  }}
+                type="button"
+                variant="outline"
+                onClick={handleLeaveLobby}
+                disabled={isLoading}
+                data-testid="exit-game-button"
+                className="flex items-center justify-center gap-2 py-3 px-6 text-base font-medium border-red-200 text-red-700 hover:bg-red-50"
+                // Force navigation to landing if button is clicked multiple times
+                onDoubleClick={() => {
+                  sessionStorage.removeItem("lobbyCode");
+                  onExitLobby();
+                }}
               >
                 {isLoading ? (
                   <>
@@ -466,28 +469,29 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                 )}
               </Button>
 
-                {isHost(currentUsername) && (
-                  <Button
-                      variant="success"
-                      onClick={handleStartGame}
-                    disabled={players.length < 5 || isLoading}
-                      data-testid="start-game-button"
-                      className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium bg-gradient-to-r from-green-500 to-emerald-500 border-0 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
-                  >
-                    {isLoading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Starte Spiel...
-                      </>
-                    ) : (
-                      <>
-                        {FiPlay({})} Spiel starten
-                      </>
-                    )}
-                  </Button>
+              {isHost(currentUsername) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleStartGame}
+                  disabled={players.length < 5 || isLoading}
+                  data-testid="start-game-button"
+                  className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-500 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
+                >
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Starte Spiel...
+                    </>
+                  ) : (
+                    <>
+                      {FiPlay({})} Spiel starten
+                    </>
+                  )}
+                </Button>
               )}
 
             </div>

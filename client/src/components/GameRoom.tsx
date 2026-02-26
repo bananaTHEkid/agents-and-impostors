@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  Button,
-  ListGroup,
-  Alert,
-  Badge,
-} from "react-bootstrap";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import {
   GameRoomProps,
   GameState,
@@ -469,8 +465,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               </div>
             )}
             <Button 
-              variant="primary" 
-              className="mt-3" 
+              type="button"
+              variant="default" 
+              className="mt-3"
               onClick={handleLeaveGame}
               data-testid="exit-game-button"
             >
@@ -497,18 +494,20 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 <FiClock className="text-white/80" />
                 <span>Phase: {currentPhase}</span>
               </div>
-              <button 
+              <Button
                 type="button"
-                className="flex items-center gap-2 py-2 px-3 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-colors duration-200"
+                variant="ghost"
+                className="flex items-center gap-2 bg-white/20 text-white hover:bg-white/30"
                 onClick={() => setShowRules(true)}
                 data-testid="game-rules-button"
               >
                 ℹ️
                 Spielregeln
-              </button>
+              </Button>
               <Button 
-                variant="light" 
-                className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-100 transition-colors duration-200" 
+                type="button"
+                variant="ghost"
+                className="flex items-center gap-2 bg-white text-indigo-700 hover:bg-indigo-50"
                 onClick={handleLeaveGame}
                 data-testid="exit-game-button"
               >
@@ -523,10 +522,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           <GameRulesModal open={showRules} onClose={() => setShowRules(false)} />
           {errorMessage && (
             <Alert
-              variant="danger"
+              variant="destructive"
               onClose={() => setErrorMessage("")}
               dismissible
-              className="mb-6 rounded-lg border-0 shadow-sm"
+              className="mb-6 rounded-lg"
             >
               {errorMessage}
             </Alert>
@@ -542,62 +541,69 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                     <h3 className="text-xl font-semibold text-gray-800">Spieler</h3>
                   </div>
                 </div>
-                <ListGroup variant="flush" className="rounded-none">
-                  {players.map((player) => (
-                    <ListGroup.Item 
-                      key={player.username}
-                      className={"flex justify-between items-center py-3 px-4 border-gray-100" + (player.username === currentTurnPlayer ? ' bg-yellow-50' : '')}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
-                          {player.username.charAt(0).toUpperCase()}
+                <div className="divide-y divide-gray-100" role="list">
+                  {players.map((player) => {
+                    const isCurrent = player.username === currentTurnPlayer;
+                    const operationLabel = (() => {
+                      const pub = publicOperations[player.username];
+                      let label = 'ausstehend...';
+                      if (player.username === username) {
+                        label = myOperation?.name || (pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...');
+                      } else {
+                        label = pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...';
+                      }
+                      return label;
+                    })();
+
+                    return (
+                      <div
+                        key={player.username}
+                        role="listitem"
+                        className={`flex flex-wrap items-center justify-between gap-3 py-3 px-4 transition-colors ${isCurrent ? 'bg-amber-50' : 'bg-white'}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-[180px]">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
+                            {player.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-gray-800">
+                              {player.username}
+                              {player.username === username && " (Du)"}
+                            </span>
+                            <span className="text-xs text-gray-600">Operation: {operationLabel}</span>
+                          </div>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {player.username}
-                            {player.username === username && " (Du)"}
-                          </span>
-                          <span className="text-xs text-gray-600">
-                            Operation: {
-                              (() => {
-                                const pub = publicOperations[player.username];
-                                let label = 'ausstehend...';
-                                if (player.username === username) {
-                                  label = myOperation?.name
-                                    || (pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...');
-                                } else {
-                                  label = pub ? (/hidden/i.test(pub) ? 'versteckt' : pub) : 'ausstehend...';
-                                }
-                                return label;
-                              })()
-                            }
-                          </span>
+
+                        <div className="flex items-center gap-2 ml-auto">
+                          {isCurrent && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 border border-amber-200">
+                              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" aria-hidden="true"></span>
+                              Aktueller Zug
+                            </span>
+                          )}
+                          {currentPhase === GamePhase.TEAM_ASSIGNMENT && (
+                            <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1 border border-gray-200">
+                              <span className="h-2 w-2 rounded-full bg-gray-500 animate-pulse" aria-hidden="true"></span>
+                              Zuweisung
+                            </span>
+                          )}
+                          {currentPhase !== GamePhase.WAITING &&
+                            currentPhase !== GamePhase.TEAM_ASSIGNMENT &&
+                            player.team &&
+                            player.username === username && (
+                              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border ${
+                                player.team === 'impostor'
+                                  ? 'bg-red-100 text-red-800 border-red-200'
+                                  : 'bg-green-100 text-green-800 border-green-200'
+                              }`}>
+                                {player.team === 'impostor' ? 'Hochstapler' : 'Agent'}
+                              </span>
+                            )}
                         </div>
                       </div>
-                      {player.username === currentTurnPlayer && (
-                        <Badge bg="warning" pill className="text-dark py-2 px-3">Aktueller Zug</Badge>
-                      )}
-                      {currentPhase === GamePhase.TEAM_ASSIGNMENT && (
-                        <Badge bg="secondary" pill className="flex items-center gap-1 py-2 px-3">
-                          <span className="spinner-grow spinner-grow-sm" role="status" aria-hidden="true"></span>
-                          Zuweisung
-                        </Badge>
-                      )}
-                      {currentPhase !== GamePhase.WAITING && 
-                       currentPhase !== GamePhase.TEAM_ASSIGNMENT && 
-                       player.team && 
-                       player.username === username && (
-                        <Badge 
-                          bg={player.team === 'impostor' ? 'danger' : 'success'} 
-                          pill
-                          className="py-2 px-3"
-                        >
-                          {player.team === 'impostor' ? 'Hochstapler' : 'Agent'}
-                        </Badge>
-                      )}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

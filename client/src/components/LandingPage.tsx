@@ -390,7 +390,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
               <div className="space-y-6">
                 <Button
                   type="submit"
-                  className="w-full bg-indigo-600 text-white hover:bg-indigo-700 py-3 px-6 text-base font-medium shadow-md hover:shadow-lg transition-shadow duration-200 rounded-lg"
+                  variant="default"
+                  className="w-full py-3 px-6 text-base shadow-md hover:shadow-lg"
                   disabled={isLoading}
                   data-testid="join-game-button"
                   aria-label="Join Game with Code"
@@ -410,7 +411,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full py-3 px-6 text-base font-medium hover:bg-indigo-50 transition-colors duration-200 rounded-lg border-indigo-300"
+                  className="w-full py-3 px-6 text-base"
                   onClick={handleCreateLobby}
                   disabled={isLoading}
                   data-testid="create-game-button"
