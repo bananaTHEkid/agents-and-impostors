@@ -18,7 +18,7 @@ interface ErrorData {
   message: string;
 }
 
-interface CreateLobbyResponse {
+interface CreateLobbyResponse {  
   lobbyId: string;
   lobbyCode: string;
   accessToken: string;

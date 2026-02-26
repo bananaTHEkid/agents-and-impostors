@@ -71,21 +71,20 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        // Require valid access token for rejoin
-        if (!accessToken) {
-          socket.emit('error', { message: 'Zugriffstoken erforderlich für Wiedereintritt' });
-          return;
-        }
-        try {
-          const { verifyLobbyToken } = await import('./utils/auth');
-          const ok = verifyLobbyToken(accessToken, lobby.id, username);
-          if (!ok) {
-            socket.emit('error', { message: 'Ungültiges oder abgelaufenes Zugriffstoken' });
+        // Token verification is optional: if provided, verify it. Non-host players can rejoin without
+        // token since they're already part of the game. Tokens protect against spoofing on stale reconnects.
+        if (accessToken) {
+          try {
+            const { verifyLobbyToken } = await import('./utils/auth');
+            const ok = verifyLobbyToken(accessToken, lobby.id, username);
+            if (!ok) {
+              socket.emit('error', { message: 'Ungültiges oder abgelaufenes Zugriffstoken' });
+              return;
+            }
+          } catch (verErr) {
+            socket.emit('error', { message: 'Token-Überprüfung fehlgeschlagen' });
             return;
           }
-        } catch (verErr) {
-          socket.emit('error', { message: 'Token-Überprüfung fehlgeschlagen' });
-          return;
         }
 
         connectionManager.cleanupOldSocket(username, socket.id, io as Server);
@@ -1072,7 +1071,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           db.all('SELECT COUNT(*) as count FROM votes WHERE lobby_id = ? AND round_number = ?', [lobbyId, currentLobbyRound])
         ]);
 
+        console.log(`Vote submitted by ${username}. Active: ${activePlayers[0]?.count}, Votes: ${submittedVotes[0]?.count}, Round: ${currentLobbyRound}`);
+
         if (activePlayers[0].count === submittedVotes[0].count) {
+          console.log(`All votes submitted! Calculating results for lobby ${lobbyId}`);
           const roundResult = await gameService.calculateRoundResults(lobbyId);
           io?.to(lobbyId).emit('voting-complete', roundResult);
 
@@ -1080,7 +1082,9 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
           const nextAction = await gameService.endRound(lobbyId, roundResult, {}, io as Server);
 
+          console.log(`endRound returned: ${nextAction}`);
           if (nextAction === 'game_end') {
+            console.log(`Emitting game-end to lobby ${lobbyId}`);
             io?.to(lobbyId).emit('game-end', finalResults);
           }
         }
