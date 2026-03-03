@@ -404,7 +404,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                           {winners.map((r) => (
                             <li key={`win-${r.username}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-green-100 bg-green-50">
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-medium">
+                                <div className="w-8 h-8 shrink-0 rounded-full bg-linear-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-medium">
                                   {r.username.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
@@ -433,7 +433,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                           {losers.map((r) => (
                             <li key={`lose-${r.username}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-red-100 bg-red-50">
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-medium">
+                                <div className="w-8 h-8 shrink-0 rounded-full bg-linear-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-medium">
                                   {r.username.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
@@ -474,10 +474,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   };
 
   return (
-    <div className="min-h-dvh w-full box-border overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 px-4 md:px-6 pt-[calc(env(safe-area-inset-top)+1rem)] pb-8 md:pb-10 border-t border-transparent" data-testid="game-room">
+    <div className="min-h-dvh w-full box-border overflow-x-hidden flex flex-col bg-linear-to-br from-indigo-50 to-indigo-200 px-4 md:px-6 pt-[calc(env(safe-area-inset-top)+1rem)] pb-8 md:pb-10 border-t border-transparent" data-testid="game-room">
       <div className="max-w-5xl w-full mx-auto mt-6 md:mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header with background */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-4 px-6">
+        <div className="bg-linear-to-r from-indigo-600 to-purple-600 py-4 px-6">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
             <h2 className="text-2xl font-bold text-white">Triple Game</h2>
             <div className="flex items-center gap-4">
@@ -560,8 +560,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                         role="listitem"
                         className={`flex flex-wrap items-center justify-between gap-3 py-3 px-4 transition-colors ${isCurrent ? 'bg-amber-50' : 'bg-white'}`}
                       >
-                        <div className="flex items-center gap-3 min-w-[180px]">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
+                        <div className="flex items-center gap-3 min-w-45">
+                          <div className="w-8 h-8 rounded-full bg-linear-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
                             {player.username.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex flex-col">

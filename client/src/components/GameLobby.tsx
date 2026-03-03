@@ -315,10 +315,10 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
   // Add debug log before rendering
   console.log('Rendering GameLobby with players:', players);
   return (
-      <div className="min-h-screen w-screen overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-lobby">
+      <div className="min-h-screen w-screen overflow-x-hidden flex flex-col bg-linear-to-br from-indigo-50 to-indigo-200 p-4 md:p-6" data-testid="game-lobby">
         <div className="max-w-3xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
           {/* Header mit Hintergrund */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 py-6 px-8">
+          <div className="bg-linear-to-r from-indigo-600 to-purple-600 py-6 px-8">
             <h2 className="text-3xl font-bold text-white text-center">Spiel-Lobby</h2>
           </div>
 
@@ -398,7 +398,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                         }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
+                        <div className="w-10 h-10 rounded-full bg-linear-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
                           {player.username.charAt(0).toUpperCase()}
                         </div>
                         <span className="font-medium text-gray-800">
@@ -476,7 +476,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
                   onClick={handleStartGame}
                   disabled={players.length < 5 || isLoading}
                   data-testid="start-game-button"
-                  className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-500 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
+                  className="flex items-center justify-center gap-2 py-3 px-8 text-base font-medium text-white bg-linear-to-r from-green-500 to-emerald-500 shadow-md hover:shadow-lg transition-shadow duration-200 disabled:opacity-60 disabled:shadow-none"
                 >
                   {isLoading ? (
                     <>

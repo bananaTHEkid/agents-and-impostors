@@ -47,7 +47,7 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ open, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center" aria-modal="true" role="dialog" data-testid="game-rules-modal">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       <div className="relative z-10 w-[92vw] max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100">
-        <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-t-2xl">
+        <div className="flex items-center justify-between px-5 py-4 bg-linear-to-r from-indigo-600 to-purple-600 rounded-t-2xl">
           <h3 className="text-white text-lg font-semibold">Spielregeln</h3>
           <button aria-label="Schließen" onClick={onClose} className="text-white/90 hover:text-white">✕</button>
         </div>
@@ -93,7 +93,7 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ open, onClose }) => {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center justify-center h-7 min-w-[2.5rem] px-3 rounded-full bg-indigo-600 text-white text-xs font-semibold uppercase">
+                      <span className="inline-flex items-center justify-center h-7 min-w-10 px-3 rounded-full bg-indigo-600 text-white text-xs font-semibold uppercase">
                         {op.label}
                       </span>
                       <span className="text-xs text-gray-600">{op.key}</span>
