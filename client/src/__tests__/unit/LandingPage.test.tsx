@@ -85,13 +85,13 @@ describe('LandingPage', () => {
 
     await act(async () => {
       // Click create lobby button without entering username
-      const createButton = screen.getByRole('button', { name: /create new game/i });
+      const createButton = screen.getByTestId('create-game-button');
       await user.click(createButton);
     });
 
     await waitFor(() => {
       // Verify error message
-      expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+      expect(screen.getByText(/bitte gib einen benutzernamen ein/i)).toBeInTheDocument();
     });
   });
 
@@ -110,14 +110,14 @@ describe('LandingPage', () => {
     });
 
     // Click create lobby button
-    const createButton = screen.getByRole('button', { name: /create new game/i });
+    const createButton = screen.getByTestId('create-game-button');
     await act(async () => {
       await user.click(createButton);
     });
 
     // Wait for error message to appear
     await waitFor(() => {
-      expect(screen.getByText(/failed to create lobby/i)).toBeInTheDocument();
+      expect(screen.getByText(/erstellen der lobby fehlgeschlagen/i)).toBeInTheDocument();
     }, { timeout: 3000 });
 
     // Verify onJoinGame was not called
@@ -204,7 +204,7 @@ describe('LandingPage', () => {
     const usernameInput = screen.getByLabelText(/username/i);
     const lobbyCodeInput = screen.getByLabelText(/lobby code/i);
     const joinButton = screen.getByRole('button', { name: /join game/i });
-    const createButton = screen.getByRole('button', { name: /create new game/i });
+    const createButton = screen.getByTestId('create-game-button');
 
     // Mock socket emit with a delayed callback to simulate async behavior
     (mockSocket.emit as ReturnType<typeof vi.fn>).mockImplementation((_event, _data, callback) => {
@@ -229,7 +229,7 @@ describe('LandingPage', () => {
 
     // Wait for loading state
     await waitFor(() => {
-      expect(screen.getByTestId('join-game-button')).toHaveTextContent('Joining...');
+      expect(screen.getByTestId('join-game-button')).toHaveTextContent('Beitreten...');
     }, { timeout: 1000, interval: 50 });
 
     // Verify inputs and buttons are disabled
@@ -256,7 +256,7 @@ describe('LandingPage', () => {
     });
 
     // Verify error message appears
-    expect(screen.getByText(/please fill in all fields/i)).toBeInTheDocument();
+    expect(screen.getByText(/bitte fülle alle felder aus/i)).toBeInTheDocument();
 
     // Fill in username
     const usernameInput = screen.getByLabelText(/username/i);
@@ -265,7 +265,7 @@ describe('LandingPage', () => {
     });
 
     // Error message should be cleared
-    expect(screen.queryByText(/please fill in all fields/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/bitte fülle alle felder aus/i)).not.toBeInTheDocument();
   });
 
   it('should cleanup socket connection on unmount', async () => {
@@ -587,7 +587,7 @@ expect(mockSocket.off).toHaveBeenCalledWith('join-success', expect.any(Function)
       });
 
       // Verify error message is displayed
-      expect(screen.getByText('Invalid lobby code format')).toBeInTheDocument();
+      expect(screen.getByText(/ungültiges format des lobby-codes/i)).toBeInTheDocument();
 
       // Verify socket emit was not called since validation failed
       expect(mockSocket.emit).not.toHaveBeenCalled();
@@ -681,7 +681,7 @@ expect(mockSocket.off).toHaveBeenCalledWith('join-success', expect.any(Function)
     render(<LandingPage onJoinGame={mockOnJoinGame} />);
 
     // Verify that the recent games section is displayed
-    expect(screen.getByText('Recent Games')).toBeInTheDocument();
+    expect(screen.getByText(/zuvor gespielt/i)).toBeInTheDocument();
 
     // Verify that the rejoin button is displayed with exact text
     const rejoinButton = screen.getByRole('button', { name: /quick access to lobby RECENT123/i });

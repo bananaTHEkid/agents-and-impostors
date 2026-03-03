@@ -39,12 +39,15 @@ describe('GameLobby Component', () => {
     sessionStorage.setItem('isHost', 'true');
     render(<GameLobby {...mockProps} />);
     
-    // Add at least 2 players so the button isn't disabled
+    // Add at least 5 players so the button isn't disabled
     await act(async () => {
       await triggerSocketEvent('player-list', { 
         players: [
           { username: 'testUser', isHost: true, id: 'host-1' },
-          { username: 'otherPlayer', isHost: false, id: 'player-2' }
+          { username: 'otherPlayer', isHost: false, id: 'player-2' },
+          { username: 'p3', isHost: false, id: 'player-3' },
+          { username: 'p4', isHost: false, id: 'player-4' },
+          { username: 'p5', isHost: false, id: 'player-5' }
         ] 
       });
     });
@@ -217,16 +220,18 @@ describe('GameLobby Component', () => {
     expect(vi.mocked(mockSocket.off).mock.calls.some(call => call[0] === 'reconnect')).toBe(true);
   });
 
-  it('disables start button when there are fewer than 2 players', async () => {
+  it('disables start button when there are fewer than 5 players', async () => {
     sessionStorage.setItem('username', 'testUser');
     sessionStorage.setItem('isHost', 'true');
     render(<GameLobby {...mockProps} />);
 
-    // Trigger player-list event with only one player
+    // Trigger player-list event with fewer than 5 players
     await act(async () => {
       await triggerSocketEvent('player-list', { 
         players: [
-          { username: 'testUser', isHost: true, id: 'host-1' }
+          { username: 'testUser', isHost: true, id: 'host-1' },
+          { username: 'p2', isHost: false, id: 'p2' },
+          { username: 'p3', isHost: false, id: 'p3' }
         ] 
       });
     });
@@ -238,17 +243,20 @@ describe('GameLobby Component', () => {
     });
   });
 
-  it('enables start button when there are at least 2 players and user is host', async () => {
+  it('enables start button when there are at least 5 players and user is host', async () => {
     sessionStorage.setItem('username', 'testUser');
     sessionStorage.setItem('isHost', 'true');
     render(<GameLobby {...mockProps} />);
 
-    // Trigger player-list event with two players, including the host
+    // Trigger player-list event with five players, including the host
     await act(async () => {
       await triggerSocketEvent('player-list', { 
         players: [
           { username: 'testUser', isHost: true, id: 'host-1' },
-          { username: 'otherPlayer', isHost: false, id: 'player-2' }
+          { username: 'p2', isHost: false, id: 'player-2' },
+          { username: 'p3', isHost: false, id: 'player-3' },
+          { username: 'p4', isHost: false, id: 'player-4' },
+          { username: 'p5', isHost: false, id: 'player-5' }
         ] 
       });
     });
