@@ -114,7 +114,7 @@ describe('GameRoom Component', () => {
     await waitFor(() => {
       // Phase set to completed and results section renders
       expect(screen.getByText(/Phase:\s*completed/i)).toBeInTheDocument();
-      expect(screen.getByText(/ergebnisse/i)).toBeInTheDocument();
+      expect(screen.getByText(/gewinner/i)).toBeInTheDocument();
     });
   });
 
@@ -346,12 +346,13 @@ describe('GameRoom Component', () => {
     await waitFor(() => {
       const phaseContent = screen.getByTestId('phase-content');
       expect(phaseContent).toHaveTextContent(/spiel beendet/i);
-      expect(phaseContent).toHaveTextContent(/ergebnisse/i);
+      expect(phaseContent).toHaveTextContent(/gewinner/i);
     });
     
     // Look for specific result text
     await waitFor(() => {
-      expect(screen.getByText(/player1: agent.*won/)).toBeInTheDocument();
+      expect(screen.getByText(/player1/i)).toBeInTheDocument();
+      expect(screen.getByText(/agent/i)).toBeInTheDocument();
     });
   });
   

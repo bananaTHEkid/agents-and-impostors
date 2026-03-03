@@ -371,15 +371,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             <h4>Spiel beendet</h4>
             {gameData?.results && (
               <div className="results mt-3 text-left">
-                {/* Simple textual summary to satisfy unit tests */}
-                <div className="mb-3">
-                  <strong>Ergebnisse:</strong>
-                  <ul className="mt-1 list-disc pl-5">
-                    {(gameData?.results || []).map((r) => (
-                      <li key={`res-${r.username}`}>{r.username}: {r.team} {r.win_status}</li>
-                    ))}
-                  </ul>
-                </div>
                 {finalRound && (
                   <div className="mb-4 bg-amber-50 text-amber-800 border border-amber-100 rounded-xl overflow-hidden">
                     <div className="bg-amber-100/60 p-3 border-b border-amber-100">
