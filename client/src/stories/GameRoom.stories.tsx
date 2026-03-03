@@ -15,12 +15,6 @@ const basePlayers: Player[] = [
   { username: "Eli", team: "impostor" },
 ]
 
-const waitingState: GameState = {
-  phase: GamePhase.WAITING,
-  round: 1,
-  totalRounds: 3,
-}
-
 const operationState: GameState = {
   phase: GamePhase.OPERATION_ASSIGNMENT,
   round: 2,

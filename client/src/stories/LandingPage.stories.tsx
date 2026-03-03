@@ -1,5 +1,6 @@
 // src/stories/LandingPage.stories.tsx
 import type { Meta, StoryObj } from "@storybook/react";
+import type { ComponentType } from "react";
 import LandingPage from "../components/LandingPage";
 import { SocketContext } from "@/contexts/SocketContext";
 
@@ -20,8 +21,8 @@ const mockSocket = {
 
 export const Default: Story = {
   decorators: [
-    (Story) => (
-      <SocketContext.Provider value={{ socket: mockSocket as any, connect: () => {}, disconnect: () => {} }}>
+    (Story: ComponentType) => (
+      <SocketContext.Provider value={{ socket: mockSocket as any, isConnected: true, connect: () => {}, disconnect: () => {} }}>
         <Story />
       </SocketContext.Provider>
     ),
