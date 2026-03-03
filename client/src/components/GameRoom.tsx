@@ -355,8 +355,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         
       case GamePhase.VOTING:
         return (
-          <div>
-            <p>Stimme für den Spieler, den du für einen Hochstapler hältst:</p>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-800">Stimme für den Spieler, den du für einen Hochstapler hältst.</p>
             {/* Reusable voting panel */}
             <VotingPanel players={players} currentUsername={username} lobbyCode={lobbyCode} />
           </div>
@@ -370,7 +370,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
           <div className="text-center p-4">
             <h4>Spiel beendet</h4>
             {gameData?.results && (
-              <div className="results mt-3 text-left">
+              <div className="results mt-3 text-left space-y-4">
                 {finalRound && (
                   <div className="mb-4 bg-amber-50 text-amber-800 border border-amber-100 rounded-xl overflow-hidden">
                     <div className="bg-amber-100/60 p-3 border-b border-amber-100">
@@ -393,7 +393,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:max-w-4xl mx-auto">
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="bg-green-50 p-3 border-b border-green-100">
                       <h5 className="text-green-800 font-semibold m-0">Gewinner</h5>
@@ -402,17 +402,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                       {winners.length ? (
                         <ul className="space-y-2">
                           {winners.map((r) => (
-                            <li key={`win-${r.username}`} className="flex items-center justify-between p-3 rounded-lg border border-green-100 bg-green-50">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-medium">
+                            <li key={`win-${r.username}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-green-100 bg-green-50">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-medium">
                                   {r.username.charAt(0).toUpperCase()}
                                 </div>
-                                <div>
-                                  <div className="font-medium text-gray-800">{r.username}</div>
-                                  <div className="text-xs text-gray-600">Operation: {r.operation || '—'}</div>
+                                <div className="min-w-0">
+                                  <div className="font-medium text-gray-800 truncate" title={r.username}>{r.username}</div>
+                                  <div className="text-xs text-gray-600 truncate">Operation: {r.operation || '—'}</div>
                                 </div>
                               </div>
-                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200">
+                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200 whitespace-nowrap">
                                 {r.team}
                               </span>
                             </li>
@@ -431,17 +431,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                       {losers.length ? (
                         <ul className="space-y-2">
                           {losers.map((r) => (
-                            <li key={`lose-${r.username}`} className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-medium">
+                            <li key={`lose-${r.username}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-red-100 bg-red-50">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 flex-shrink-0 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-medium">
                                   {r.username.charAt(0).toUpperCase()}
                                 </div>
-                                <div>
-                                  <div className="font-medium text-gray-800">{r.username}</div>
-                                  <div className="text-xs text-gray-600">Operation: {r.operation || '—'}</div>
+                                <div className="min-w-0">
+                                  <div className="font-medium text-gray-800 truncate" title={r.username}>{r.username}</div>
+                                  <div className="text-xs text-gray-600 truncate">Operation: {r.operation || '—'}</div>
                                 </div>
                               </div>
-                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800 border border-red-200">
+                              <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800 border border-red-200 whitespace-nowrap">
                                 {r.team}
                               </span>
                             </li>
@@ -522,10 +522,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
             </Alert>
           )}
           {/* Operation UI is rendered inside the phase content via OperationPanel */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: Players list */}
-            <div className="min-h-0 order-2 lg:order-1">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-h-[60vh] md:max-h-[70vh] overflow-y-auto">
+          <div className="flex flex-col gap-6">
+            {/* Main content on top */}
+            <div className="order-1">
+              <GameInfo className="mb-6" />
+              <div className="phase-content bg-white rounded-xl p-4 border border-gray-100 shadow-sm" data-testid="phase-content">
+                {renderPhaseContent()}
+              </div>
+            </div>
+
+            {/* Players list at the bottom */}
+            <div className="order-2">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-h-[40vh] overflow-y-auto">
                 <div className="bg-indigo-50 p-4 border-b border-indigo-100">
                   <div className="flex items-center gap-2">
                     <FiUsers className="text-indigo-600 text-xl" />
@@ -597,15 +605,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
                 </div>
               </div>
             </div>
-
-            {/* Center: Combined status + operation info and phase content */}
-            <div className="order-1 lg:order-2">
-              <GameInfo className="mb-6" />
-              <div className="phase-content bg-white rounded-xl p-4 border border-gray-100 shadow-sm" data-testid="phase-content">
-                {renderPhaseContent()}
-              </div>
-            </div>
-            {/* Right column removed: Spielnachrichten functionality deleted */}
           </div>
         </div>
       </div>

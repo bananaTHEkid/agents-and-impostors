@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Form } from 'react-bootstrap';
 import type { OperationRendererProps } from '@/types';
 
 const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, username, disabled, onSubmit }) => {
@@ -10,21 +9,47 @@ const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, use
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!choice) return;
+    if (!choice || disabled) return;
     onSubmit?.({ targetPlayer: choice });
   };
 
   return (
-    <Form onSubmit={handleSubmit} className="mt-3">
-      <Form.Group className="mb-2">
-        <Form.Label>Spieler wählen:</Form.Label>
-        <Form.Select data-testid="operation-choose-player" value={choice} onChange={(e) => setChoice(e.target.value)} required disabled={disabled}>
-          <option value="">Spieler auswählen</option>
-          {options.filter(p => p !== username).map(p => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </Form.Select>
-      </Form.Group>
+    <form onSubmit={handleSubmit} className="mt-3 space-y-3">
+      <p className="text-sm text-gray-800">Wähle einen Spieler aus.</p>
+      <div className="space-y-2">
+        {options
+          .filter((p) => p !== username)
+          .map((p) => {
+            const selected = choice === p;
+            const isDisabled = disabled;
+            return (
+              <button
+                key={p}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => !isDisabled && setChoice(p)}
+                className={
+                  "w-full text-left flex items-center justify-between px-4 py-3 rounded-lg border transition-colors " +
+                  (selected ? "border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50 " : "border-gray-200 bg-white ") +
+                  (isDisabled ? "cursor-not-allowed opacity-60" : "hover:bg-gray-50")
+                }
+                aria-pressed={selected}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
+                    {p.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="font-medium text-gray-800">{p}</span>
+                </div>
+                {selected && <span className="text-sm text-indigo-700 font-semibold">Gewählt</span>}
+              </button>
+            );
+          })}
+        {!options.length && (
+          <div className="text-sm text-gray-500">Keine Spieler verfügbar.</div>
+        )}
+      </div>
+
       <button
         data-testid="operation-submit"
         type="submit"
@@ -33,7 +58,7 @@ const SingleChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, use
       >
         Bestätigen
       </button>
-    </Form>
+    </form>
   );
 };
 

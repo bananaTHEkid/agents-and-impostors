@@ -137,14 +137,6 @@ export default meta
 
 type Story = StoryObj<typeof GameRoom>
 
-export const WaitingRoom: Story = {
-  args: {
-    lobbyCode,
-    onExitGame: () => console.log("Exit game"),
-  },
-  decorators: [buildRoomDecorator({ username: "Alice", gameState: waitingState })],
-}
-
 export const OperationTurn: Story = {
   args: {
     lobbyCode,
