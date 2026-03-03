@@ -15,6 +15,7 @@ export default defineConfig(function (_a) {
         },
         server: {
             port: 5000,
+            strictPort: true,
         },
         define: {
             'process.env': {
