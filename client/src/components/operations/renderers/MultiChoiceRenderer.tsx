@@ -51,7 +51,7 @@ const MultiChoiceRenderer: React.FC<OperationRendererProps> = ({ operation, user
               aria-pressed={isChecked}
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-medium">
                   {p.charAt(0).toUpperCase()}
                 </div>
                 <span className="font-medium text-gray-800">{p}</span>

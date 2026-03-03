@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 interface GameRulesModalProps {
   open: boolean;
@@ -31,54 +31,16 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ open, onClose }) => {
     { key: 'spy transfer', label: 'Agentenübertragung', desc: 'Wähle einen Spieler; du wechselst heimlich in dessen Team (ohne sein Team zu ändern).' },
   ];
 
-  // Click-to-toggle explanation state and container refs
-  const [activeOp, setActiveOp] = useState<string | null>(null);
-  const chipsRef = useRef<HTMLDivElement | null>(null);
-  const measureRef = useRef<HTMLDivElement | null>(null);
-  const chipBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [rows, setRows] = useState<string[][]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (chipsRef.current && !chipsRef.current.contains(target)) setActiveOp(null);
-    };
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [open]);
-
-  // Compute label rows based on container width and measured chip widths
-  useEffect(() => {
-    const computeRows = () => {
-      const containerWidth = chipsRef.current?.offsetWidth || 0;
-      if (!containerWidth) return;
-      const gap = 8; // Tailwind gap-2
-      const order = OPS.map(o => o.key);
-      const widths = order.map(k => (chipBtnRefs.current[k]?.offsetWidth || 0));
-      const result: string[][] = [];
-      let current: string[] = [];
-      let lineWidth = 0;
-      for (let i = 0; i < order.length; i++) {
-        const w = widths[i];
-        const need = current.length ? (lineWidth + gap + w) : (lineWidth + w);
-        if (need <= containerWidth) {
-          current.push(order[i]);
-          lineWidth = need;
-        } else {
-          if (current.length) result.push(current);
-          current = [order[i]];
-          lineWidth = w;
-        }
-      }
-      if (current.length) result.push(current);
-      setRows(result);
-    };
-    computeRows();
-    const onResize = () => computeRows();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [OPS]);
+  const [opQuery, setOpQuery] = useState<string>('');
+  const filteredOps = useMemo(() => {
+    const q = opQuery.trim().toLowerCase();
+    if (!q) return OPS;
+    return OPS.filter(op =>
+      op.key.toLowerCase().includes(q) ||
+      op.label.toLowerCase().includes(q) ||
+      op.desc.toLowerCase().includes(q)
+    );
+  }, [opQuery]);
 
   // Conditional render after hooks to preserve hook order
   return open ? (
@@ -102,60 +64,49 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ open, onClose }) => {
               <li><span className="font-medium">Abstimmung:</span> Es wird ein Spieler ausgewählt, von dem vermutet wird, dass dieser der Hochstapler ist. Anhand des Teams (und ggf. individueller Ziele) wird automatisch ausgewertet, wer gewinnt oder verliert.</li>
             </ul>
           </div>
-          <div className="space-y-2">
-            <h4 className="font-semibold">Operationen</h4>
-            <p className="text-sm">Dies ist eine Liste aller Operationen mit Erklärungen:</p>
-            <div className="mt-3 flex flex-col gap-2" ref={chipsRef}>
-              {rows.map((row, idx) => (
-                <React.Fragment key={`row-${idx}`}>
-                  <div className="flex flex-wrap gap-2">
-                    {row.map(key => {
-                      const op = OPS.find(o => o.key === key)!;
-                      return (
-                        <button
-                          key={key}
-                          ref={(el) => { chipBtnRefs.current[key] = el; }}
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setActiveOp(prev => (prev === key ? null : key)); }}
-                          data-testid={`op-chip-${key}`}
-                          aria-expanded={activeOp === key}
-                          aria-label={op.desc}
-                          className="inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 text-xs font-medium hover:bg-indigo-100"
-                        >
-                          {op.key}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div
-                    className={
-                      "overflow-hidden transition-all duration-300 ease-out origin-top transform " +
-                      (row.includes(activeOp || '')
-                        ? "mt-2 opacity-100 max-h-96 scale-y-100"
-                        : "mt-0 opacity-0 max-h-0 scale-y-0")
-                    }
-                    aria-hidden={!row.includes(activeOp || '')}
-                  >
-                    <div className="rounded-xl bg-white text-gray-800 text-sm p-3 shadow-xl border border-indigo-200">
-                      <div className="h-1 w-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-md mb-2" />
-                      {OPS.find(o => o.key === activeOp)?.desc}
-                    </div>
-                  </div>
-                </React.Fragment>
-              ))}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="font-semibold">Operationen</h4>
+                <p className="text-sm text-gray-700">Schnelle Übersicht aller Operationen.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Suche</label>
+                <input
+                  type="search"
+                  value={opQuery}
+                  onChange={(e) => setOpQuery(e.target.value)}
+                  placeholder="Name oder Stichwort"
+                  className="w-48 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  data-testid="ops-search"
+                />
+              </div>
             </div>
 
-            {/* Invisible measurer to capture chip widths without affecting layout */}
-            <div ref={measureRef} className="absolute opacity-0 pointer-events-none -z-10">
-              {OPS.map(op => (
-                <button
-                  key={`measure-${op.key}`}
-                  ref={(el) => { chipBtnRefs.current[op.key] = chipBtnRefs.current[op.key] || el; }}
-                  className="inline-flex items-center rounded-full bg-indigo-50 border px-3 py-1 text-xs"
+            <div className="grid gap-3 max-h-72 overflow-y-auto pr-1" role="list">
+              {filteredOps.map((op) => (
+                <div
+                  key={op.key}
+                  role="listitem"
+                  className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 shadow-sm hover:border-indigo-200"
+                  data-testid={`op-card-${op.key}`}
                 >
-                  {op.label}
-                </button>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center h-7 min-w-[2.5rem] px-3 rounded-full bg-indigo-600 text-white text-xs font-semibold uppercase">
+                        {op.label}
+                      </span>
+                      <span className="text-xs text-gray-600">{op.key}</span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-800 leading-relaxed">{op.desc}</p>
+                </div>
               ))}
+              {!filteredOps.length && (
+                <div className="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-600 text-center">
+                  Keine Operation gefunden.
+                </div>
+              )}
             </div>
           </div>
         </div>
