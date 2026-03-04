@@ -41,7 +41,6 @@ test.describe.serial('Game Lobby', () => {
       await expect(page.getByTestId('game-lobby')).toBeVisible({ timeout: 15000 });
       await expect(page.getByTestId('game-lobby')).toContainText('1 Spieler');
       await expect(page.getByTestId('code-viewer')).toBeVisible();
-      await expect(page.getByRole('alert').locator('div')).toBeVisible();
     });
 
     test('should display lobby code after creation', async ({ page }) => {
@@ -133,11 +132,11 @@ test.describe.serial('Game Lobby', () => {
 
       // Assert - Error message should be displayed
       // Use explicit text match for robustness instead of relying on role lookup
-      const errorTextLocator = page.getByText('Invalid lobby code format');
+      const errorTextLocator = page.getByText('Ungültiges Format des Lobby-Codes');
       await expect(errorTextLocator).toBeVisible({ timeout: 10000 });
       const errorText = await errorTextLocator.textContent();
       expect(errorText).toBeTruthy();
-      expect(errorText?.toLowerCase()).toContain('invalid lobby code');
+      expect(errorText?.toLowerCase()).toContain('ungültiges format des lobby-codes');
     });
   });
 

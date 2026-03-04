@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  server:
+    build: ./server
+    ports:
+      - "5001:5001"
+
+  client:
+    build:
+      context: ./client
+      args:
+        VITE_SERVER_URL: http://server:5001
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+# TODO: Client cant connect to the server reliably

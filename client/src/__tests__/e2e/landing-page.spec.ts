@@ -6,7 +6,7 @@ test.describe('Landing Page', () => {
     await page.goto('/');
 
     // Validate page title
-    await expect(page).toHaveTitle('Agent Game');
+    await expect(page).toHaveTitle('Triple Spiel');
 
     // Validate the main container and header
     const landingPageContainer = page.getByTestId('landing-page');
@@ -21,7 +21,7 @@ test.describe('Landing Page', () => {
     await page.getByRole('textbox', { name: 'Lobby Code' }).click();
     await page.getByRole('textbox', { name: 'Lobby Code' }).fill('');
     await page.getByTestId('join-game-button').click();
-    await expect(page.getByTestId('landing-page')).toContainText('Please fill in all fields');
+    await expect(page.getByTestId('landing-page')).toContainText('Bitte fülle alle Felder aus');
   });
 
   test('should show error when joining with wrong lobbycode format', async ({ page }) => {
@@ -31,7 +31,7 @@ test.describe('Landing Page', () => {
     await page.getByRole('textbox', { name: 'Lobby Code' }).click();
     await page.getByRole('textbox', { name: 'Lobby Code' }).fill('B');
     await page.getByTestId('join-game-button').click();
-    await expect(page.getByTestId('landing-page')).toContainText('Invalid lobby code format');
+    await expect(page.getByTestId('landing-page')).toContainText('Ungültiges Format des Lobby-Codes');
   });
 
   test('should be able to create lobby', async ({ page }) => {
