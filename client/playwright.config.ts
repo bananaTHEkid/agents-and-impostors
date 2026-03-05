@@ -10,7 +10,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - Custom ports: CLIENT_PORT=3000 SERVER_PORT=3001 npm run test:e2e
  */
 const ENV = process.env.E2E_ENV || 'dev';
-// Default to Vite dev server on 5173, but allow override
+// Default to Vite on 5173 for both dev and preview, but allow override
 const CLIENT_PORT = process.env.CLIENT_PORT || '5173';
 const SERVER_PORT = process.env.SERVER_PORT || '5001';
 const CLIENT_URL = `http://localhost:${CLIENT_PORT}`;
@@ -83,9 +83,9 @@ export default defineConfig({
     
     // Client server - different commands for dev vs production
     ...(isProduction ? [
-      // Production: serve built files
+      // Production: build once, preview on the same port used in dev
       {
-        command: 'npm run build && npx vite preview --port 5000 --strict-port',
+        command: `npm run build && npx vite preview --port ${CLIENT_PORT} --strict-port`,
         cwd: '.',
         url: CLIENT_URL,
         reuseExistingServer: !process.env.CI,

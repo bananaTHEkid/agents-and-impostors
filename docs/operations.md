@@ -1,67 +1,43 @@
-## Operations Phase — Assignment & Reveal (Server Guide)
+## Operations and game flow (server-facing)
 
-Purpose
-- Explain how teams and operations are assigned at game start, how operation info is prepared and persisted, and the sequential reveal mechanics used by the server.
+This doc explains how the server assigns teams/operations, reveals them, processes votes, and how to extend the operation set. For high-level gameplay and setup, see the root [ReadMe](../ReadMe.md); for quick links, see [docs index](./README.md).
 
-Overview
-- Teams (agents / impostors) and a single operation per player are assigned server-side when a game starts.
-- Operation info is prepared on the server and persisted as an immutable JSON blob (`players.operation_info`).
-- Operations are revealed sequentially to players to avoid chaos; some operations are marked `hidden` and show only as a generic placeholder to the room.
+## Round flow (server view)
+1) `start-game` -> validate lobby and set state.
+2) `assignTeamsAndOperations()` picks impostors (per `GAME_CONFIG.IMPOSTOR_THRESHOLDS`) and writes `team` and `operation` to the DB transactionally.
+3) `generateOperationInfo()` runs `generateInfo` for each op. If `availablePlayers` is returned, the server selects final targets, persists `operation_info`, and emits `operation-prepared` privately.
+4) Sequential reveal: emit room-level `operation-assigned-public` (name or `"hidden operation"`), then send `operation-assigned` to the player. Player replies with `accept-assignment` to advance.
+5) Disconnects: if a player is offline at their turn, mark `operation_assigned = 1` and `operation_accepted = 1`, keep their `operation_info`, and continue.
+6) All accepted -> set lobby `phase = VOTING` and emit `phase-change`.
+7) Voting: one vote per player, no self-votes; highest vote count marks logically eliminated players (ties allowed).
+8) Resolution: apply each operation’s `modifyWinCondition` (if any) using the tallied round result, then emit final results and clean per-game tables (players, votes, rounds).
 
-Sequence (high level)
-1. `start-game` request -> server validates and updates lobby state.
-2. `assignTeamsAndOperations()` picks impostors (per `GAME_CONFIG.IMPOSTOR_THRESHOLDS`) and selects an operation for each player; writes `team` and `operation` into DB inside a transaction.
-3. `generateOperationInfo()` runs the operation-specific `generateInfo` functions. If the generator returns `availablePlayers`, the server selects final targets (random by default), writes the final `operation_info` to DB, and emits `operation-prepared` to the player socket (if connected).
-4. The server begins sequential reveal: for each player, emit a room-level placeholder `operation-assigned-public` (shows real name for non-hidden ops or the literal `"hidden operation"` for hidden ops), then send the actual `operation-assigned` event to the player's socket. The player replies with `accept-assignment` to continue the sequence.
-5. If a player is disconnected at their turn, the server auto-marks them as assigned + accepted and continues. Persisted `operation_info` remains and will be delivered when they reconnect.
-6. When all players are assigned/accepted, server sets lobby `phase = VOTING` and emits `phase-change` to begin voting.
+## Data and events
+- DB fields: `players.team`, `players.operation`, `players.operation_info`, `players.operation_assigned`, `players.operation_accepted`.
+- Socket events (server → clients): `your-team`, `operation-prepared`, `operation-assigned-public`, `operation-assigned`, `phase-change`.
+- Hidden ops show as `operation: "hidden operation"` in `operation-assigned-public`; the real op is sent privately.
 
-DB fields involved
-- `players.team` — `'agent' | 'impostor'` (assigned at round start)
-- `players.operation` — operation name string (assigned at round start)
-- `players.operation_info` — JSON blob containing final, server-chosen operation details
-- `players.operation_assigned` — boolean/int: whether the player was presented with the operation
-- `players.operation_accepted` — boolean/int: whether the player acknowledged the operation
+## Operations reference
+Defined in `server/src/game-logic/config.ts` (`GAME_CONFIG.OPERATIONS` + `OPERATION_CONFIG`). Hidden ops are announced to the room as "hidden operation" but the receiving player gets the real details.
 
-Socket events (server → clients)
-- `your-team` — personal: `{ team, message }` with player's own team
-- `operation-prepared` — personal: `{ operation, info }` final server-chosen details (persisted)
-- `operation-assigned-public` — room: `{ player, operation }` placeholder for UI; `operation` is either operation name or `"hidden operation"`
-- `operation-assigned` — personal: `{ operation }` delivered to the actor
-- `phase-change` — room: used to transition to `VOTING`
+- grudge (hidden): server picks opposing-team target; if that target is eliminated, holder wins.
+- infatuation (hidden): ties your win to a random target’s outcome.
+- scapegoat (hidden): you only win if voted out.
+- sleeper agent (hidden): team flips once on resolution.
+- secret tip (hidden): reveal one player’s name and team.
+- anonymous tip: reveal one player’s team privately.
+- old photographs: reveal two players on the same team (team not stated).
+- confession: pick a player; they receive your team confession.
+- danish intelligence: pick two; reveal if one/both impostors or both agents.
+- secret intel: server picks two; same reveal logic as danish intelligence.
+- unfortunate encounter: pick one; both see standardized message about your combined status.
+- spy transfer: pick one; silently swap teams.
+- defector (implemented, not in rotation): pick one; convert to opposite team.
 
-Hidden operation policy
-- Operations listed as `hidden: true` in `GAME_CONFIG.OPERATIONS` are represented to the room with `operation: "hidden operation"` in `operation-assigned-public`.
-- The receiving player still gets the real operation via `operation-assigned` and `operation-prepared` privately.
-
-Server choice & immutability
-- When an operation generator returns an `availablePlayers` list (i.e., expects a choice), the server picks final targets and persists them into `operation_info`. This prevents players from changing choices during the sequential reveal.
-
-Disconnected-player policy
-- If a player is disconnected during sequential assignment, the server auto-marks `operation_assigned = 1` and `operation_accepted = 1` for them and continues revealing to the next player.
-- Their `operation_info` is still stored and will be delivered when they reconnect.
-
-Example (5-player flow)
-- Server picks 2 impostors and 3 agents and assigns operations (some hidden):
-  - Alice: `grudge` (hidden)
-  - Bob: `confession`
-  - Carol: `secret tip` (hidden)
-  - Dave: `old photographs`
-  - Eve: `defector` (hidden)
-- Server persists chosen targets (e.g., grudgeTarget) for hidden ops and emits `operation-prepared` to each player socket when possible.
-- Sequential reveal emits `operation-assigned-public` for Alice (`hidden operation`) and sends Alice the actual op privately; Alice accepts; repeat for Bob (public `confession`) and so on.
-
-Testing checklist
-- Unit tests:
-  - `assignTeamsAndOperations` writes `team` and `operation` for every player.
-  - `generateOperationInfo` persists server-chosen targets for ops with `availablePlayers`.
-- Integration/e2e:
-  - Start a game with N players, disconnect one socket, ensure server auto-accepts and sequence completes.
-  - Verify `operation-assigned-public` shows `"hidden operation"` for hidden ops.
-  - Reconnect after auto-accept: ensure `operation-prepared` is replayed to the reconnecting player.
-
-Notes & next steps
-- Visibility config: currently non-hidden ops are revealed publicly in `operation-assigned-public`. If you prefer all ops to stay private, change the server to omit operation names in that event.
-- Audit/logging: consider adding an `operations_log` table for replay and spectating.
-
-Document created to match server implementation in `server/src/game-logic` and `server/src/server.ts`.
+## Add a new operation (checklist)
+1) Add entry to `GAME_CONFIG.OPERATIONS` and `OPERATION_CONFIG` in `server/src/game-logic/config.ts`.
+2) Implement `generateInfo` (and optional `modifyWinCondition`) in `OPERATION_CONFIG`.
+3) Decide hidden vs. public: set `hidden: true` to show "hidden operation" in public assignment.
+4) If the op needs player choice, return `availablePlayers` and let the server pick/persist targets in `generateOperationInfo`.
+5) Update client UI if new op needs bespoke messaging.
+6) Add tests: target persistence, hook behavior, and reveal semantics.
