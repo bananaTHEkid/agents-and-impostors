@@ -19,39 +19,57 @@ jobs:
           fi
           curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
 
-      - name: Create GitHub deployment
+      - name: Create deployment
         id: create_deployment
-        uses: peter-evans/create-deployment@v3
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.sha }}
-          environment: production
-          auto_inactive: true
+          script: |
+            const { data } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              auto_inactive: true,
+              required_contexts: []
+            });
+            core.setOutput('deployment_id', data.id);
 
-      - name: Mark deployment in_progress
-        uses: peter-evans/create-deployment-status@v4
+      - name: Mark in_progress
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deployment_id: ${{ steps.create_deployment.outputs.deployment_id }}
-          state: in_progress
-          environment_url: https://triple-2-0.onrender.com
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'in_progress',
+              environment_url: 'https://triple-2-0.onrender.com'
+            });
 
-      - name: Mark deployment success
+      - name: Mark success
         if: success()
-        uses: peter-evans/create-deployment-status@v4
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deployment_id: ${{ steps.create_deployment.outputs.deployment_id }}
-          state: success
-          environment_url: https://triple-2-0.onrender.com
-          log_url: https://dashboard.render.com/web
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'success',
+              environment_url: 'https://triple-2-0.onrender.com',
+              log_url: 'https://dashboard.render.com/web'
+            });
 
-      - name: Mark deployment failure
+      - name: Mark failure
         if: failure()
-        uses: peter-evans/create-deployment-status@v4
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          deployment_id: ${{ steps.create_deployment.outputs.deployment_id }}
-          state: failure
-          environment_url: https://triple-2-0.onrender.com
-          log_url: https://dashboard.render.com/web
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'failure',
+              environment_url: 'https://triple-2-0.onrender.com',
+              log_url: 'https://dashboard.render.com/web'
+            });
