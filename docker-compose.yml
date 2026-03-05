@@ -1,20 +1,15 @@
-version: "3.9"
 services:
   server:
-    build: ./server
+    image: ghcr.io/bananathekid/agents-and-impostors-server:latest
     ports:
       - "5001:5001"
     environment:
       CLIENT_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
+      # JWT_SECRET: set-me
 
   client:
-    build:
-      context: ./client
-      args:
-        # Use localhost so the browser can reach the server through the mapped port
-        VITE_SERVER_URL: http://localhost:5001
+    image: ghcr.io/bananathekid/agents-and-impostors-client:latest
     ports:
       - "3000:80"
     depends_on:
       - server
-# TODO: Client cant connect to the server reliably
