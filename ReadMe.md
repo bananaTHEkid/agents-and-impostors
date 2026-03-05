@@ -27,6 +27,18 @@ npm install
 npm run dev   # default port 5173 (override with CLIENT_PORT)
 ```
 
+## Docker
+```bash
+docker compose build --no-cache client  # rebuild to bake VITE_SERVER_URL
+docker compose up -d
+
+# Open
+# Client: http://localhost:3000
+# Server API / socket: http://localhost:5001
+```
+- Client bundle is built with `VITE_SERVER_URL=http://localhost:5001` (set in compose). Change that value and rebuild the client if your server runs elsewhere.
+- Server CORS origins are set in compose (`CLIENT_ORIGIN`) to allow the client at `http://localhost:3000`.
+
 ## Testing
 - Unit: `cd client && npm run test:unit`
 - E2E (auto-start servers): `cd client && START_SERVER=true CLIENT_PORT=5173 SERVER_PORT=5001 npm run test:e2e`

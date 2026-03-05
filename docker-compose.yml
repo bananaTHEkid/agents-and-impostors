@@ -4,12 +4,15 @@ services:
     build: ./server
     ports:
       - "5001:5001"
+    environment:
+      CLIENT_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
 
   client:
     build:
       context: ./client
       args:
-        VITE_SERVER_URL: http://server:5001
+        # Use localhost so the browser can reach the server through the mapped port
+        VITE_SERVER_URL: http://localhost:5001
     ports:
       - "3000:80"
     depends_on:
