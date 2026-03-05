@@ -49,8 +49,12 @@ if (process.env.NODE_ENV !== 'production') {
 
   app.get('/debug/lobby/:code', (async (req: Request, res: Response) => {
     try {
-      const { code } = req.params;
-      const result = await lobbyService.getLobbyPlayers(code);
+      const codeParam = Array.isArray(req.params.code) ? req.params.code[0] : req.params.code;
+      if (!codeParam) {
+        return res.status(400).json({ success: false, error: 'Lobby code missing' });
+      }
+
+      const result = await lobbyService.getLobbyPlayers(codeParam);
       if (!result.success) {
         return res.status(404).json({ success: false, error: 'Lobby not found' });
       }

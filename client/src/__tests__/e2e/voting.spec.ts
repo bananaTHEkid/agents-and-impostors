@@ -61,7 +61,7 @@ const selectOperationTargets = async (
 };
 
 test.describe('Voting Behavior', () => {
-  test.setTimeout(240000);
+  test.setTimeout(10000);
 
   test('All players can vote and game completes with results', async ({ browser }) => {
     const baseNames = ['VotingHost', 'VoterP2', 'VoterP3', 'VoterP4', 'VoterP5'];
