@@ -91,24 +91,19 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
       });
     }
 
-    // Typ für die Socket-Antwort
-    type PlayerListResponse = Player[] | { players: Player[] } | null | undefined;
-    
     // Funktion zum Abrufen der Spielerliste
     const fetchPlayerList = () => {
       console.log("Fordere Spielerliste an...");
-      socket.emit("get-lobby-players", { lobbyCode }, (response: PlayerListResponse) => {
+      socket.emit("get-lobby-players", { lobbyCode }, (response: any) => {
         console.log("Antwort auf get-lobby-players:", response);
         if (response) {
           if (Array.isArray(response)) {
             updatePlayers(response);
-          } else if ('players' in response && Array.isArray(response.players)) {
-            updatePlayers(response);
-          } else {
-            console.warn("Ungültiges Format der Spielerliste erhalten:", response);
+          } else if (response && typeof response === 'object' && Array.isArray(response.players)) {
+            updatePlayers(response.players);
+          } else if (response.error) {
+            console.warn("Fehler beim Abrufen der Spielerliste:", response.error);
           }
-        } else {
-          console.warn("Keine Antwort erhalten oder Antwort ist null/undefined");
         }
       });
     };
