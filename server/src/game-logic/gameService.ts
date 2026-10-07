@@ -536,7 +536,6 @@ export async function endRound(
 
     // Immediately remove per-game data so nothing persists between games.
     try {
-        const winConditionOps = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
         await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
         await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
     } catch (err) {

@@ -42,7 +42,7 @@ export async function joinLobby(
     username: string
 ): Promise<{ success: boolean; error?: string; lobbyId?: string; players?: any[] }> {
     if (!isValidUsername(username)) {
-        return { success: false, error: "Invalid username" };
+        return { success: false, error: "Ungültiger Benutzername. 2-20 Zeichen, nur alphanumerisch und Unterstriche erlaubt." };
     }
 
     const db = getDB();
