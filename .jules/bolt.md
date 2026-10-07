@@ -1,0 +1,3 @@
+## 2025-05-18 - SQLite Foreign Key Indexing & Query Batching in Socket-Driven Realtime Backend
+**Learning:** In SQLite-backed Socket.io applications, frequent lookups on `lobby_id`, `username`, and `target` during round processing and reconnection cause unindexed full-table scans. Additionally, stats aggregation (e.g. counting votes per player) using `Promise.all` + `db.get` leads to N+1 query overhead.
+**Action:** Always ensure database indexes are created on foreign keys and frequently filtered columns (`lobby_id`, `username`, `target`), and use single aggregated `GROUP BY` SQL queries instead of mapped async individual queries.
