@@ -409,8 +409,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                 let reveal: any;
                 if (shouldReveal) {
                   const message = oneOrBothImpostors
-                    ? `Out of ${t1} and ${t2}, one or more of them are impostors.`
-                    : `${t1} and ${t2} are both agents.`;
+                    ? `Von ${t1} und ${t2} ist mindestens einer ein Hochstapler.`
+                    : `${t1} und ${t2} sind beide Agenten.`;
                   reveal = {
                     target1Name: t1,
                     target1Team: target1.team,
@@ -419,7 +419,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                     message
                   };
                 } else {
-                  reveal = { message: 'One is an impostor and one is an agent (no revelation)' };
+                  reveal = { message: 'Einer ist Hochstapler und einer ist Agent (keine Offenlegung)' };
                 }
 
                 await db.run(
@@ -603,7 +603,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         // Inform the confessor's client of their selected target for UI display
         socket.emit('operation-info', { operation: 'confession', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true });
-        socket.emit('game-message', { type: 'system', text: `${confessor.username} hat ${'confession'} verwendet` });
+        socket.emit('game-message', { type: 'system', text: `${confessor.username} hat Geständnis verwendet` });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Progress operation assignments: find next unassigned player and assign
@@ -711,7 +711,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
         if (!validateVoteData(emitter || '', targetPlayer)) {
-          socket.emit('error', { message: 'Invalid defector target' });
+          socket.emit('error', { message: 'Ungültiges Ziel für Überläufer' });
           return;
         }
 
@@ -739,7 +739,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         // Inform the defector's client of their selected target for UI display
         socket.emit('operation-info', { operation: 'defector', info: { targetPlayer }, message: undefined });
         socket.emit('operation-used', { success: true, message: `Du hast ${targetPlayer} als dein Ziel gewählt. Das Team wird in der nächsten Phase gewechselt.` });
-        socket.emit('game-message', { type: 'system', text: `${defector.username} hat ${'defector'} verwendet` });
+        socket.emit('game-message', { type: 'system', text: `${defector.username} hat Überläufer verwendet` });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat defector submission as acceptance and progress assignment similar to other operations
