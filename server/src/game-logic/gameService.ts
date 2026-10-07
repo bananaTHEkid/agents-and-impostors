@@ -308,19 +308,31 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
     const teamScores: { agent: number; impostor: number } = { agent: 0, impostor: 0 };
     teamScores[overallWinner] = 1;
 
-    // Compute mvp: simple heuristic using times voted out and whether player's team matched overallWinner
-    const playersWithStats = await Promise.all(playersList.map(async (p: any) => {
-        const timesVotedOutRow = await db.get(`SELECT COUNT(*) as c FROM votes WHERE target = ? AND lobby_id = ?`, [p.username, lobbyId]);
+    // BOLT PERFORMANCE OPTIMIZATION:
+    // Avoid N+1 SQL queries by fetching vote counts for all targets in a single aggregated GROUP BY query.
+    // Performance impact: Reduces DB calls from O(N) queries to 1 query during final results calculation.
+    const voteCountsRows = await db.all(`
+        SELECT target, COUNT(*) as c
+        FROM votes
+        WHERE lobby_id = ?
+        GROUP BY target
+    `, [lobbyId]);
+    const voteCountsMap: Record<string, number> = {};
+    voteCountsRows.forEach((r: any) => {
+        voteCountsMap[r.target] = r.c;
+    });
+
+    const playersWithStats = playersList.map((p: any) => {
         const roundsWon = (p.team === overallWinner) ? 1 : 0;
         return {
             username: p.username,
             team: p.team,
             operation: p.operation,
             winStatus: (p.win_status as 'win' | 'lose') || (p.team === overallWinner ? 'win' : 'lose'),
-            times_voted_out: timesVotedOutRow ? timesVotedOutRow.c : 0,
+            times_voted_out: voteCountsMap[p.username] || 0,
             rounds_won: roundsWon
         };
-    }));
+    });
 
     const mvp = playersWithStats.reduce((prev: any, curr: any) => {
         const prevScore = (prev.rounds_won || 0) - (prev.times_voted_out || 0);

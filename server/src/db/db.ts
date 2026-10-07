@@ -84,6 +84,15 @@ export const initDB = async (useMemory = false) => {
             )
         `);
 
+        // BOLT PERFORMANCE OPTIMIZATION:
+        // Add indexes on frequently queried foreign keys and lookup columns (lobby_id, username, target)
+        // to convert O(N) table scans into O(log N) index lookups on database operations.
+        await dbInstance.run("CREATE INDEX IF NOT EXISTS idx_players_lobby_id ON players(lobby_id)");
+        await dbInstance.run("CREATE INDEX IF NOT EXISTS idx_players_lobby_username ON players(lobby_id, username)");
+        await dbInstance.run("CREATE INDEX IF NOT EXISTS idx_votes_lobby_round ON votes(lobby_id, round_number)");
+        await dbInstance.run("CREATE INDEX IF NOT EXISTS idx_votes_lobby_target ON votes(lobby_id, target)");
+        await dbInstance.run("CREATE INDEX IF NOT EXISTS idx_sessions_username ON connection_sessions(username)");
+
         console.log("Datenbank erfolgreich initialisiert");
         return dbInstance;
     } catch (error) {
