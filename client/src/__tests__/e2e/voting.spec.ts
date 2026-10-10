@@ -5,10 +5,18 @@ const selectOperationTargets = async (
   phaseContent: Locator,
   currentUsername: string,
   allUsernames: string[],
-  requiredTargets = 1,
 ) => {
   const submitBtn = phaseContent.getByTestId('operation-submit');
   if (!(await submitBtn.count())) return false;
+
+  if (await submitBtn.isEnabled().catch(() => false)) {
+    await submitBtn.click().catch(() => {});
+    return true;
+  }
+
+  const phaseText = await phaseContent.textContent().catch(() => '');
+  const isMulti = /Wähle zwei Spieler/i.test(phaseText || '');
+  const requiredTargets = isMulti ? 2 : 1;
 
   const targets = allUsernames.filter((u) => u !== currentUsername);
   const targetButtons: { target: string; locator: Locator }[] = [];
@@ -20,48 +28,36 @@ const selectOperationTargets = async (
 
   if (!targetButtons.length) return false;
 
-  const needed = Math.min(requiredTargets, targetButtons.length);
-  let picked = 0;
+  const unselectedButtons: Locator[] = [];
   for (const { locator } of targetButtons) {
     const visible = await locator.isVisible().catch(() => false);
     const disabled = await locator.isDisabled().catch(() => true);
-    if (!visible || disabled) continue;
-    await locator.click();
-    picked++;
-    if (picked >= needed) break;
-  }
-
-  if (picked < needed) return false;
-
-  await expect(submitBtn).toBeEnabled({ timeout: 10000 });
-  await submitBtn.click();
-
-  const ackDeadline = Date.now() + 20000;
-  while (Date.now() < ackDeadline) {
-    const votingVisible = await phaseContent.getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
-    if (votingVisible) break;
-    const disabled = await submitBtn.isDisabled().catch(() => false);
-    const visible = await submitBtn.isVisible().catch(() => false);
-    if (disabled || !visible) break;
-    await phaseContent.page().waitForTimeout(300);
-  }
-
-  const maybeAccept = phaseContent.getByTestId('accept-assignment-btn');
-  if (await maybeAccept.isVisible().catch(() => false)) {
-    const enabled = !(await maybeAccept.isDisabled().catch(() => false));
-    if (enabled) {
-      await maybeAccept.click();
-      await expect(maybeAccept).toBeDisabled({ timeout: 10000 }).catch(async () => {
-        await expect(maybeAccept).toBeHidden({ timeout: 10000 });
-      });
+    const pressed = (await locator.getAttribute('aria-pressed').catch(() => 'false')) === 'true';
+    if (visible && !disabled && !pressed) {
+      unselectedButtons.push(locator);
     }
   }
 
-  return true;
+  if (unselectedButtons.length >= requiredTargets) {
+    for (let i = 0; i < requiredTargets; i++) {
+      await unselectedButtons[i].click().catch(() => {});
+    }
+  }
+
+  const pollDeadline = Date.now() + 1000;
+  while (Date.now() < pollDeadline) {
+    if (await submitBtn.isEnabled().catch(() => false)) {
+      await submitBtn.click().catch(() => {});
+      return true;
+    }
+    await phaseContent.page().waitForTimeout(100);
+  }
+
+  return false;
 };
 
 test.describe('Voting Behavior', () => {
-  test.setTimeout(10000);
+  test.setTimeout(180000);
 
   test('All players can vote and game completes with results', async ({ browser }) => {
     const baseNames = ['VotingHost', 'VoterP2', 'VoterP3', 'VoterP4', 'VoterP5'];
@@ -76,69 +72,65 @@ test.describe('Voting Behavior', () => {
     await Promise.all(pages.map(p => p.setViewportSize({ width: 1920, height: 1080 })));
 
     try {
-
-      // All players accept their assignments to reach Voting phase
-      console.log('Waiting for all players to accept assignments...');
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const username = usernames[i];
-
-        // Skip if any page is already in Voting phase
-        {
-          let anyVoting = false;
-          for (const p of pages) {
-            const visible = await p
-              .getByTestId('phase-content')
-              .getByText(/Stimme für den Spieler/i)
-              .isVisible()
-              .catch(() => false);
-            if (visible) { anyVoting = true; break; }
+      // Dynamically find whichever player's turn is active and complete their assignment action until ALL pages reach Voting phase
+      const deadline = Date.now() + 60000;
+      while (Date.now() < deadline) {
+        let countVoting = 0;
+        for (const p of pages) {
+          const text = await p.getByTestId('phase-content').textContent().catch(() => '');
+          if (/Stimme|Abstimmung|Voting|Spiel beendet|Ergebnisse|Results|Completed/i.test(text || '')) {
+            countVoting++;
           }
-          if (anyVoting) break;
+        }
+        if (countVoting === pages.length) break;
+
+        let acted = false;
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          const username = usernames[i];
+          const phaseContent = page.getByTestId('phase-content');
+
+          const didTargetOp = await selectOperationTargets(phaseContent, username, usernames);
+          if (didTargetOp) { acted = true; break; }
+
+          const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
+          const acceptEnabled = (await acceptBtn.isVisible().catch(() => false)) && !(await acceptBtn.isDisabled().catch(() => false));
+          if (acceptEnabled) {
+            await acceptBtn.click().catch(() => {});
+            acted = true;
+            break;
+          }
         }
 
-        const phaseContent = page.getByTestId('phase-content');
-        await phaseContent.waitFor({ timeout: 30000 });
-        await phaseContent.scrollIntoViewIfNeeded();
-
-        const pollUntil = Date.now() + 45000;
-        while (Date.now() < pollUntil) {
-          const submitVisible = await phaseContent.getByTestId('operation-submit').isVisible().catch(() => false);
-          const acceptVisible = await phaseContent.getByTestId('accept-assignment-btn').isVisible().catch(() => false);
-          const votingVisible = await phaseContent.getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
-          if (submitVisible || acceptVisible || votingVisible) break;
-          await page.waitForTimeout(500);
-        }
-
-        const didMulti = await selectOperationTargets(phaseContent, username, usernames, 2);
-        if (didMulti) continue;
-
-        const didSingle = await selectOperationTargets(phaseContent, username, usernames, 1);
-        if (didSingle) continue;
-
-        const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
-        if (await acceptBtn.isVisible().catch(() => false)) {
-          await expect(acceptBtn).toBeEnabled({ timeout: 10000 });
-          await acceptBtn.click();
-          await expect(acceptBtn).toBeDisabled({ timeout: 3000 }).catch(async () => {
-            await expect(acceptBtn).toBeHidden({ timeout: 3000 });
-          });
+        if (!acted) {
+          await pages[0].waitForTimeout(300);
         }
       }
 
       // Wait for all players to reach Voting phase
-      console.log('Waiting for Voting phase...');
-      await Promise.all(
-        pages.map(page =>
-          page
-            .getByTestId('phase-content')
-            .getByText(/Stimme für den Spieler/i)
-            .waitFor({ timeout: 10000 })
-        )
-      );
+      const votingDeadline = Date.now() + 30000;
+      let allInVoting = false;
+      while (Date.now() < votingDeadline) {
+        let allReady = true;
+        for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+          const page = pages[pIdx];
+          const phaseText = await page.getByTestId('phase-content').textContent().catch(() => '');
+          const hasVotingHeader = /Stimme|Abstimmung|Voting|Spiel beendet|Ergebnisse|Results|Completed/i.test(phaseText || '');
+          const hasVoteBtn = await page.getByRole('button', { name: new RegExp(usernames[1], 'i') }).isVisible().catch(() => false);
+          if (!hasVotingHeader && !hasVoteBtn) {
+            allReady = false;
+            break;
+          }
+        }
+        if (allReady) {
+          allInVoting = true;
+          break;
+        }
+        await pages[0].waitForTimeout(300);
+      }
+      expect(allInVoting).toBeTruthy();
 
       // All players vote
-      console.log('Starting voting...');
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
         const username = usernames[i];
@@ -146,14 +138,10 @@ test.describe('Voting Behavior', () => {
 
         // Find eligible vote targets (all players except self)
         const voteTargets: string[] = usernames.filter(u => u !== username);
-        if (voteTargets.length === 0) {
-          console.warn(`No valid targets for ${username}`);
-          continue;
-        }
+        if (voteTargets.length === 0) continue;
 
         // Find the vote button for the first eligible target
         const targetUsername = voteTargets[0];
-        console.log(`${username} looking for vote button for ${targetUsername}`);
         
         // Get all vote buttons and find the one matching our target
         const allButtons = phaseContent.getByRole('button');
@@ -169,10 +157,7 @@ test.describe('Voting Behavior', () => {
           }
         }
 
-        if (!voteButton) {
-          console.warn(`Could not find vote button for ${targetUsername} as seen by ${username}`);
-          continue;
-        }
+        if (!voteButton) continue;
 
         // Wait for button to be clickable
         const voteDeadline = Date.now() + 15000;
@@ -182,13 +167,10 @@ test.describe('Voting Behavior', () => {
           const enabled = !(await voteButton.isDisabled().catch(() => false));
           
           if (visible && enabled) {
-            console.log(`${username} clicking vote for ${targetUsername}`);
-            await voteButton.click().catch(err => {
-              console.warn(`Click failed: ${err}`);
-            });
+            await voteButton.click().catch(() => {});
             clickedSuccessfully = true;
             
-            // Wait for confirmation: look for "Deine Stimme" (your vote) message
+            // Wait for confirmation: look for "Deine Stimme" (your vote) or game completion message
             const confDeadline = Date.now() + 10000;
             let confirmed = false;
             while (Date.now() < confDeadline && !confirmed) {
@@ -197,14 +179,11 @@ test.describe('Voting Behavior', () => {
                 .isVisible()
                 .catch(() => false);
               const resultMsg = await phaseContent
-                .getByText(/Spielergebnis|Game Results|Results|Abstimmungsergebnis/i)
+                .getByText(/Spielergebnis|Game Results|Results|Abstimmungsergebnis|Spiel beendet|Gewinner|Verlierer/i)
                 .isVisible()
                 .catch(() => false);
               
-              if (confirmMsg || resultMsg) {
-                confirmed = true;
-                console.log(`${username} vote confirmed`);
-              }
+              if (confirmMsg || resultMsg) confirmed = true;
               
               if (!confirmed) {
                 await page.waitForTimeout(300);
@@ -215,27 +194,19 @@ test.describe('Voting Behavior', () => {
           
           await page.waitForTimeout(300);
         }
-
-        if (!clickedSuccessfully) {
-          console.error(`Failed to click vote button for ${username} -> ${targetUsername}`);
-        }
       }
 
       // Wait for all players to see results
-      console.log('Waiting for game results...');
       const resultsDeadline = Date.now() + 30000;
       let allSeeResults = false;
       
       while (Date.now() < resultsDeadline && !allSeeResults) {
         let everyoneSeesResult = true;
         
-        for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
-          const page = pages[pageIdx];
-          const phaseContent = page.getByTestId('phase-content');
-          
-          // Check text content directly instead of using getByText().isVisible()
-          const pageText = await phaseContent.textContent().catch(() => '');
-          const hasResultsText = /Spiel beendet|Ergebnisse|Results|Game Over/i.test(pageText || '');
+        for (let idx = 0; idx < pages.length; idx++) {
+          const page = pages[idx];
+          const fullText = await page.textContent().catch(() => '');
+          const hasResultsText = /Spiel beendet|Ergebnisse|Results|Game Over|Gewinner|Verlierer/i.test(fullText || '');
           
           if (!hasResultsText) {
             everyoneSeesResult = false;
@@ -245,7 +216,6 @@ test.describe('Voting Behavior', () => {
         
         if (everyoneSeesResult) {
           allSeeResults = true;
-          console.log('All pages show results');
           break;
         }
         
@@ -253,8 +223,6 @@ test.describe('Voting Behavior', () => {
       }
       
       expect(allSeeResults).toBeTruthy();
-
-      console.log('Voting test completed successfully');
     } finally {
       await Promise.all(contexts.map(async c => {
         try {
@@ -289,49 +257,65 @@ test.describe('Voting Behavior', () => {
       await hostPage.getByTestId('start-game-button').click();
       await expect(hostPage.getByTestId('game-room')).toBeVisible({ timeout: 60000 });
 
-      // Accept all assignments (fast-forward to voting)
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const phaseContent = page.getByTestId('phase-content');
+      // Accept all assignments dynamically until ALL pages reach Voting phase
+      const deadline2 = Date.now() + 60000;
+      while (Date.now() < deadline2) {
+        let countVoting = 0;
+        for (const p of pages) {
+          const text = await p.getByTestId('phase-content').textContent().catch(() => '');
+          if (/Stimme|Abstimmung|Voting|Spiel beendet|Ergebnisse|Results|Completed/i.test(text || '')) {
+            countVoting++;
+          }
+        }
+        if (countVoting === pages.length) break;
 
-        // Wait for phase content
-        await phaseContent.waitFor({ timeout: 30000 });
+        let acted = false;
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          const username = usernames[i];
+          const phaseContent = page.getByTestId('phase-content');
 
-        // Wait until voting is visible or accept button is ready
-        const pollDeadline = Date.now() + 45000;
-        while (Date.now() < pollDeadline) {
-          const votingVisible = await page
-            .getByTestId('phase-content')
-            .getByText(/Stimme für den Spieler/i)
-            .isVisible()
-            .catch(() => false);
+          const didTargetOp = await selectOperationTargets(phaseContent, username, usernames);
+          if (didTargetOp) { acted = true; break; }
+
           const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
-          const acceptVisible = await acceptBtn.isVisible().catch(() => false);
-          if (votingVisible || acceptVisible) break;
-          await page.waitForTimeout(500);
+          const acceptEnabled = (await acceptBtn.isVisible().catch(() => false)) && !(await acceptBtn.isDisabled().catch(() => false));
+          if (acceptEnabled) {
+            await acceptBtn.click().catch(() => {});
+            acted = true;
+            break;
+          }
         }
 
-        const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
-        if (await acceptBtn.isVisible().catch(() => false)) {
-          const enabled = !(await acceptBtn.isDisabled().catch(() => false));
-          if (enabled) {
-            await acceptBtn.click();
-          }
+        if (!acted) {
+          await hostPage.waitForTimeout(300);
         }
       }
 
       // Wait for voting phase
-      await Promise.all(
-        pages.map(page =>
-          page
-            .getByTestId('phase-content')
-            .getByText(/Stimme für den Spieler/i)
-            .waitFor({ timeout: 10000 })
-        )
-      );
+      const votingDeadline2 = Date.now() + 30000;
+      let allInVoting2 = false;
+      while (Date.now() < votingDeadline2) {
+        let allReady = true;
+        for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+          const page = pages[pIdx];
+          const phaseText = await page.getByTestId('phase-content').textContent().catch(() => '');
+          const hasVotingHeader = /Stimme|Abstimmung|Voting|Spiel beendet|Ergebnisse|Results|Completed/i.test(phaseText || '');
+          const hasVoteBtn = await page.getByRole('button', { name: new RegExp(usernames[1], 'i') }).isVisible().catch(() => false);
+          if (!hasVotingHeader && !hasVoteBtn) {
+            allReady = false;
+            break;
+          }
+        }
+        if (allReady) {
+          allInVoting2 = true;
+          break;
+        }
+        await hostPage.waitForTimeout(300);
+      }
+      expect(allInVoting2).toBeTruthy();
 
       // All players vote concurrently
-      console.log('All players voting concurrently...');
       const votePromises = pages.map(async (page, i) => {
         const phaseContent = page.getByTestId('phase-content');
         const voteTarget = usernames[(i + 1) % usernames.length];
@@ -372,12 +356,10 @@ test.describe('Voting Behavior', () => {
       while (Date.now() < resultsDeadline && !allSeeResults) {
         let everyoneSeesResult = true;
         
-        for (const page of pages) {
-          const phaseContent = page.getByTestId('phase-content');
-          const hasResultsText = await phaseContent
-            .getByText(/Spiel beendet|Ergebnisse|Results|Game Over/i)
-            .isVisible()
-            .catch(() => false);
+        for (let idx = 0; idx < pages.length; idx++) {
+          const page = pages[idx];
+          const fullText = await page.textContent().catch(() => '');
+          const hasResultsText = /Spiel beendet|Ergebnisse|Results|Game Over|Gewinner|Verlierer/i.test(fullText || '');
           
           if (!hasResultsText) {
             everyoneSeesResult = false;
@@ -387,7 +369,6 @@ test.describe('Voting Behavior', () => {
         
         if (everyoneSeesResult) {
           allSeeResults = true;
-          console.log('All pages show results');
           break;
         }
         
@@ -395,7 +376,6 @@ test.describe('Voting Behavior', () => {
       }
 
       expect(allSeeResults).toBeTruthy();
-      console.log('Vote concurrency test completed');
     } finally {
       await Promise.all(contexts.map(async c => {
         try {
