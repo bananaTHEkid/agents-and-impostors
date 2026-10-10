@@ -11,6 +11,8 @@ database.sqlite
 /build/
 server/dist/
 
+*.log
+
 # Environment variables
 client/.env
 server/.env

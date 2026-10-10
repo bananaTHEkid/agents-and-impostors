@@ -13,8 +13,8 @@ const ENV = process.env.E2E_ENV || 'dev';
 // Default to Vite on 5173 for both dev and preview, but allow override
 const CLIENT_PORT = process.env.CLIENT_PORT || '5173';
 const SERVER_PORT = process.env.SERVER_PORT || '5001';
-const CLIENT_URL = `http://localhost:${CLIENT_PORT}`;
-const SERVER_URL = `http://localhost:${SERVER_PORT}`;
+const CLIENT_URL = `http://127.0.0.1:${CLIENT_PORT}`;
+const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
 // Determine if we're testing production build
 const isProduction = ENV === 'production' || ENV === 'prod';
@@ -29,14 +29,13 @@ if (!process.env.CI) {
  */
 export default defineConfig({
   testDir: './src/__tests__/e2e',
-  /* Run tests in files in parallel */
-  fullyParallel: true,
+  /* Run tests sequentially to avoid parallel DB reset collisions */
+  fullyParallel: false,
+  workers: 1,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? [['html'], ['github']] : 'html',
   

@@ -20,6 +20,11 @@ const defaultOrigins = process.env.CLIENT_ORIGIN
       'http://localhost:5000'
     ];
 
+// Health check routes for test runners / monitors
+app.get(['/', '/health'], (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Middleware
 app.use(express.json());
 
