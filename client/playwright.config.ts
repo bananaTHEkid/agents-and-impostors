@@ -29,14 +29,14 @@ if (!process.env.CI) {
  */
 export default defineConfig({
   testDir: './src/__tests__/e2e',
-  /* Run tests in files in parallel */
-  fullyParallel: true,
+  // E2E tests share the server's SQLite database and reset it between scenarios.
+  fullyParallel: false,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? [['html'], ['github']] : 'html',
   
@@ -70,7 +70,7 @@ export default defineConfig({
     ...(process.env.START_SERVER === 'true' ? [{
       command: 'npm run dev',
       cwd: '../server',
-      url: SERVER_URL,
+      url: `${SERVER_URL}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
       stdout: 'pipe' as const,

@@ -30,6 +30,10 @@ app.use(helmet());
 // Basic rate limiting for public endpoints
 app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
 
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Development-only debug endpoints
 if (process.env.NODE_ENV === 'development') {
   app.get('/debug/lobbies', (async (req: Request, res: Response) => {

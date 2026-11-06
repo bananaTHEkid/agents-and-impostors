@@ -35,6 +35,7 @@ docker compose up -d
 # Open
 # Client: http://localhost:3000
 # Server API / socket: http://localhost:5001
+# Server health check: http://localhost:5001/health
 ```
 - Client bundle is built with `VITE_SERVER_URL=http://localhost:5001` (set in compose). Change that value and rebuild the client if your server runs elsewhere.
 - Server CORS origins are set in compose (`CLIENT_ORIGIN`) to allow the client at `http://localhost:3000`.
@@ -68,4 +69,3 @@ docker compose up -d
 ## Security notes
 - Set a strong `JWT_SECRET` in server env.
 - Set `CLIENT_ORIGIN` to your deployed frontend in production; tighten rate limits as needed.
-
