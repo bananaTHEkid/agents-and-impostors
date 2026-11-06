@@ -27,6 +27,7 @@ interface CreateLobbyResponse {
 interface JoinLobbyResponse {
   success: boolean;
   lobbyCode?: string;
+  accessToken?: string;
   error?: string;
 }
 
@@ -197,6 +198,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
           if (response && response.success && response.lobbyCode) {
             sessionStorage.setItem("lobbyCode", response.lobbyCode);
             sessionStorage.setItem("username", trimmedUsername);
+            if (response.accessToken) sessionStorage.setItem("accessToken", response.accessToken);
             sessionStorage.setItem("isHost", "false");
             setIsLoading(false);
             onJoinGame(response.lobbyCode);
@@ -288,6 +290,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onJoinGame }) => {
           if (response.success && response.lobbyCode) {
             sessionStorage.setItem("lobbyCode", response.lobbyCode);
             sessionStorage.setItem("username", trimmedUsername);
+            if (response.accessToken) sessionStorage.setItem("accessToken", response.accessToken);
             sessionStorage.setItem("isHost", "false");
             setIsLoading(false);
             onJoinGame(response.lobbyCode);

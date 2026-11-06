@@ -233,10 +233,10 @@ export async function calculateRoundResults(lobbyId: string): Promise<RoundResul
     players.forEach(player => { voteCounts[player.username] = 0; });
     votes.forEach(vote => { if (voteCounts[vote.target] !== undefined) voteCounts[vote.target]++; });
 
-    const maxVotes = Math.max(...Object.values(voteCounts));
-    const eliminatedPlayers = Object.entries(voteCounts)
-        .filter(([_, count]) => count === maxVotes)
-        .map(([player]) => player);
+    const maxVotes = votes.length ? Math.max(...Object.values(voteCounts)) : 0;
+    const eliminatedPlayers = votes.length
+        ? Object.entries(voteCounts).filter(([_, count]) => count === maxVotes).map(([player]) => player)
+        : [];
 
     // In single-round/no-elimination mode we do not persist eliminations to the DB.
     // eliminatedPlayers is a logical result (players who received the most votes).
@@ -285,8 +285,10 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
     playersList.forEach(p => { voteCounts[p.username] = 0; });
     votes.forEach(v => { if (voteCounts[v.target] !== undefined) voteCounts[v.target]++; });
 
-    const maxVotes = Object.values(voteCounts).length ? Math.max(...Object.values(voteCounts)) : 0;
-    const eliminatedPlayers = Object.entries(voteCounts).filter(([_, c]) => c === maxVotes).map(([name]) => name);
+    const maxVotes = votes.length ? Math.max(...Object.values(voteCounts)) : 0;
+    const eliminatedPlayers = votes.length
+        ? Object.entries(voteCounts).filter(([_, c]) => c === maxVotes).map(([name]) => name)
+        : [];
 
     // Determine winner by same logic as round calculation
     const remainingPlayers = playersList.filter(p => !eliminatedPlayers.includes(p.username));
@@ -534,10 +536,16 @@ export async function endRound(
         lobbies[lobbyId].current_round = 0;
     }
 
-    // Immediately remove per-game data so nothing persists between games.
+    // Keep lobby membership for the next game, but remove round-specific state.
     try {
-        const winConditionOps = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector', 'spy transfer']);
-        await db.run("DELETE FROM players WHERE lobby_id = ?", [lobbyId]);
+        await db.run(`
+            UPDATE players
+            SET team = '', operation = NULL, operation_info = NULL,
+                operation_assigned = 0, operation_accepted = 0,
+                eliminated = 0, win_status = NULL
+            WHERE lobby_id = ?
+        `, [lobbyId]);
+        await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
         await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
     } catch (err) {
         console.error(`Fehler beim Bereinigen der Lobbydaten für ${lobbyId}:`, err);

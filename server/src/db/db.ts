@@ -14,11 +14,16 @@ export const initDB = async (useMemory = false) => {
             driver: sqlite3.Database
         });
 
-        // Drop existing tables if they exist
-        await dbInstance.run("DROP TABLE IF EXISTS votes");
-        await dbInstance.run("DROP TABLE IF EXISTS players");
-        await dbInstance.run("DROP TABLE IF EXISTS lobbies");
-        await dbInstance.run("DROP TABLE IF EXISTS rounds");
+        // Test databases are isolated per run; persistent databases must retain
+        // active lobbies so reconnects survive a server restart.
+        if (useMemory) {
+            await dbInstance.run("DROP TABLE IF EXISTS votes");
+            await dbInstance.run("DROP TABLE IF EXISTS players");
+            await dbInstance.run("DROP TABLE IF EXISTS lobbies");
+            await dbInstance.run("DROP TABLE IF EXISTS rounds");
+            await dbInstance.run("DROP TABLE IF EXISTS connection_sessions");
+        }
+        await dbInstance.run("PRAGMA foreign_keys = ON");
 
         // Create tables
         await dbInstance.run(`
@@ -28,9 +33,16 @@ export const initDB = async (useMemory = false) => {
                 status TEXT CHECK(status IN ('waiting', 'playing', 'completed')),
                 phase TEXT CHECK(phase IN ('waiting', 'team_assignment', 'operation_assignment', 'voting', 'completed')),
                 current_round INTEGER DEFAULT 1,
-                total_rounds INTEGER DEFAULT 3
+                total_rounds INTEGER DEFAULT 1,
+                host_username TEXT
             )
         `);
+
+        // Upgrade databases created before host ownership was introduced.
+        const lobbyColumns = await dbInstance.all("PRAGMA table_info(lobbies)");
+        if (!lobbyColumns.some((column: { name: string }) => column.name === 'host_username')) {
+            await dbInstance.run("ALTER TABLE lobbies ADD COLUMN host_username TEXT");
+        }
 
         await dbInstance.run(`
             CREATE TABLE IF NOT EXISTS rounds (

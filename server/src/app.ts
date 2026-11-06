@@ -31,7 +31,7 @@ app.use(helmet());
 app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
 
 // Development-only debug endpoints
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV === 'development') {
   app.get('/debug/lobbies', (async (req: Request, res: Response) => {
     try {
       const db = getDB();

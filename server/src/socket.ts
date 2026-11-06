@@ -6,6 +6,7 @@ import { GAME_CONFIG, OPERATION_CONFIG } from './game-logic/config';
 import * as gameService from './game-logic/gameService';
 import * as lobbyService from './lobby-manager/lobbyService';
 import * as connectionManager from './connectionManager';
+import { generateLobbyToken } from './utils/auth';
 import {
   validateUsername,
   validateLobbyCode,
@@ -71,8 +72,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        // Token verification is optional: if provided, verify it. Non-host players can rejoin without
-        // token since they're already part of the game. Tokens protect against spoofing on stale reconnects.
+        // Rejoining is an authenticated action; the username alone is not an identity proof.
+        if (!accessToken) {
+          socket.emit('error', { message: 'Ein Zugriffstoken ist für den Wiedereintritt erforderlich' });
+          return;
+        }
         if (accessToken) {
           try {
             const { verifyLobbyToken } = await import('./utils/auth');
@@ -89,7 +93,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
         connectionManager.cleanupOldSocket(username, socket.id, io as Server);
 
-        const players = await db.all('SELECT username, team, operation, eliminated FROM players WHERE lobby_id = ?', [lobby.id]);
+        const players = await db.all('SELECT username, eliminated FROM players WHERE lobby_id = ?', [lobby.id]);
 
         connectionManager.addConnection(socket.id, username, lobbyCode);
         socket.join(lobby.id);
@@ -106,9 +110,6 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.emit('player-list', { players });
 
         if (player.team) {
-          const impostors = players.filter((p: any) => p.team === 'impostor').map((p: any) => p.username);
-          const agents = players.filter((p: any) => p.team === 'agent').map((p: any) => p.username);
-          socket.emit('team-assignment', { impostors, agents, phase: lobby.phase });
           socket.emit('your-team', { team: player.team, message: `Du bist ein ${player.team === 'impostor' ? 'Hochstapler' : 'Agent'}!` });
         }
 
@@ -221,7 +222,12 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         if (callback) {
-          callback({ success: true, lobbyCode: normalizedLobbyCode, players });
+          callback({
+            success: true,
+            lobbyCode: normalizedLobbyCode,
+            players,
+            accessToken: generateLobbyToken(lobbyId, username, normalizedLobbyCode)
+          });
         }
 
         console.log(`Spieler ${username} ist der Lobby ${normalizedLobbyCode} ${isNewJoin ? 'beigetreten' : 'wieder beigetreten'}`);
@@ -238,6 +244,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         if (!lobby) throw new Error('Lobby existiert nicht');
         const lobbyId = lobby.id;
         if (lobby.status !== 'waiting') throw new Error('Spiel hat bereits begonnen');
+        const requester = connectionManager.getUsername(socket.id);
+        if (!requester) throw new Error('Nicht authentifiziert');
+        const lobbyRecord = await db.get('SELECT host_username FROM lobbies WHERE id = ?', [lobbyId]);
+        if (!lobbyRecord || lobbyRecord.host_username !== requester) throw new Error('Nur der Lobby-Ersteller kann das Spiel starten');
 
         const playersInLobby = await db.all('SELECT username FROM players WHERE lobby_id = ?', [lobbyId]);
         if (playersInLobby.length < GAME_CONFIG.MIN_PLAYERS) {
@@ -269,10 +279,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         // After teams and operations are assigned, emit final team info to room and players
         try {
           const teamRows: Array<{ username: string; team: string }> = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
-          const impostors = teamRows.filter(r => r.team === 'impostor').map(r => r.username);
-          const agents = teamRows.filter(r => r.team === 'agent').map(r => r.username);
-          io?.to(lobbyId).emit('team-assignment', { impostors, agents, phase: GamePhase.TEAM_ASSIGNMENT });
-          io?.to(lobbyId).emit('player-list', { players: teamRows as any });
+          io?.to(lobbyId).emit('player-list', { players: teamRows.map(r => ({ username: r.username })) });
           for (const row of teamRows) {
             const playerSocketId = connectionManager.getSocketId(row.username);
             if (playerSocketId) {
@@ -327,12 +334,13 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         // Emit basic game-state
         socket.emit('game-state', { phase: lobby.phase, current_round: lobby.current_round } as any);
         // Emit player list with teams
-        const teamRows: Array<{ username: string; team: string }> = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
-        socket.emit('player-list', { players: teamRows as any });
-        // Emit team-assignment lists; client will match by its own username
-        const impostors = teamRows.filter(r => r.team === 'impostor').map(r => r.username);
-        const agents = teamRows.filter(r => r.team === 'agent').map(r => r.username);
-        socket.emit('team-assignment', { impostors, agents, phase: GamePhase.TEAM_ASSIGNMENT });
+        const publicPlayers: Array<{ username: string; eliminated: number }> = await db.all('SELECT username, eliminated FROM players WHERE lobby_id = ?', [lobbyId]);
+        socket.emit('player-list', { players: publicPlayers });
+        const currentUsername = connectionManager.getUsername(socket.id);
+        if (currentUsername) {
+          const ownPlayer = await db.get('SELECT team FROM players WHERE lobby_id = ? AND username = ?', [lobbyId, currentUsername]);
+          if (ownPlayer?.team) socket.emit('your-team', { team: ownPlayer.team });
+        }
       } catch (err) {
         console.error('Fehler bei get-game-state:', err);
         socket.emit('error', { message: 'Spielzustand konnte nicht abgerufen werden' });
@@ -348,6 +356,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
         const lobbyId = lobby.id;
+        const connectedUsername = connectionManager.getUsername(socket.id);
+        if (!connectedUsername || connectedUsername !== username) {
+          socket.emit('error', { message: 'Nicht authentifiziert' });
+          return;
+        }
 
         console.log(`Received accept-assignment from ${username} for lobby ${lobbyCode} (id: ${lobbyId})`);
         io?.to(lobbyId).emit('game-message', { type: 'system', text: `${username} accepted their assignment.` });
@@ -827,8 +840,13 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
         const lobbyId = lobby.id;
+        const connectedUsername = connectionManager.getUsername(socket.id);
+        const emitter = connectedUsername || socket.handshake.auth?.username;
+        if (!connectedUsername || emitter !== connectedUsername) {
+          socket.emit('error', { message: 'Nicht authentifiziert' });
+          return;
+        }
 
-        const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
         const turnState = turnStateByLobby[lobbyId];
         if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
           socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
@@ -1033,6 +1051,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
 
     socket.on('submit-vote', async ({ lobbyCode, username, vote }) => {
       try {
+        const connectedUsername = connectionManager.getUsername(socket.id);
+        if (!connectedUsername || connectedUsername !== username) {
+          socket.emit('error', { message: 'Nicht authentifiziert' });
+          return;
+        }
         if (!validateLobbyCode(lobbyCode)) {
           socket.emit('error', { message: 'Ungültiges Lobby-Code-Format' });
           return;

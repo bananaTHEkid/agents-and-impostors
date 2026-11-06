@@ -68,6 +68,10 @@ async function hardDeleteLobby(lobbyCode: string, io: Server): Promise<void> {
         const lobby = await db.get("SELECT id FROM lobbies WHERE lobby_code = ?", [lobbyCode]);
         if (!lobby) return;
         const lobbyId = lobby.id;
+        const state = await db.get("SELECT phase, status FROM lobbies WHERE id = ?", [lobbyId]);
+        if (state && (state.phase !== 'waiting' || state.status !== 'waiting')) {
+            return;
+        }
 
         // Remove all DB state tied to this lobby
         await db.run("DELETE FROM connection_sessions WHERE lobby_code = ?", [lobbyCode]);

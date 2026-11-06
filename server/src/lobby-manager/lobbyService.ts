@@ -27,8 +27,8 @@ export async function createLobby(username: string): Promise<{ lobbyId: string; 
     const lobbyId = Math.random().toString(36).substring(2, 10); 
 
     await db.run(
-        "INSERT INTO lobbies (id, lobby_code, status, phase, current_round, total_rounds) VALUES (?, ?, 'waiting', ?, 0, 0)", 
-        [lobbyId, lobbyCode, GamePhase.WAITING]
+        "INSERT INTO lobbies (id, lobby_code, status, phase, current_round, total_rounds, host_username) VALUES (?, ?, 'waiting', ?, 0, 1, ?)",
+        [lobbyId, lobbyCode, GamePhase.WAITING, username]
     );
     await db.run(
         "INSERT INTO players (username, lobby_id, team, eliminated, operation, operation_info, win_status) VALUES (?, ?, 'agent', 0, NULL, NULL, NULL)",
@@ -175,5 +175,13 @@ export async function getLobbyById(lobbyId: string): Promise<Lobby | null> {
     const db = getDB();
     const lobbyData = await db.get("SELECT * FROM lobbies WHERE id = ?", [lobbyId]);
      if (!lobbyData) return null;
-    return lobbyData as Lobby;
+    return {
+        id: lobbyData.id,
+        lobbyCode: lobbyData.lobby_code,
+        players: [],
+        status: lobbyData.status,
+        phase: lobbyData.phase,
+        current_round: lobbyData.current_round,
+        total_rounds: lobbyData.total_rounds
+    };
 }

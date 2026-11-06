@@ -9,7 +9,7 @@ Online multiplayer social-deduction game with one-round matches, hidden operatio
 - Single-round games (lobby → assignment → operations → voting → results → cleanup)
 - 5–10 players; impostor count scales by lobby size
 - Server-assigned operations (some hidden) that can alter info or win conditions
-- Socket-driven realtime updates; per-game data wiped after each round
+- Socket-driven realtime updates; round state is wiped while lobby membership is retained for reuse
 
 ## Quick start
 Prereqs: Node 18+.
@@ -47,7 +47,7 @@ docker compose up -d
 ## Configuration
 | Name | Where | Default | Purpose |
 | --- | --- | --- | --- |
-| JWT_SECRET | server | (none) | Required for lobby access tokens |
+| JWT_SECRET | server | (none) | Required for lobby access tokens; mandatory in production |
 | CLIENT_ORIGIN | server | http://localhost:5173,http://127.0.0.1:5173 | Allowed CORS origins |
 | PORT | server | 5001 | Server listen port |
 | VITE_SERVER_URL | client | http://localhost:5001 | API base used by the client |
@@ -68,5 +68,4 @@ docker compose up -d
 ## Security notes
 - Set a strong `JWT_SECRET` in server env.
 - Set `CLIENT_ORIGIN` to your deployed frontend in production; tighten rate limits as needed.
-
 

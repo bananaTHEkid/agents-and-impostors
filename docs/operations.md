@@ -10,11 +10,11 @@ This doc explains how the server assigns teams/operations, reveals them, process
 5) Disconnects: if a player is offline at their turn, mark `operation_assigned = 1` and `operation_accepted = 1`, keep their `operation_info`, and continue.
 6) All accepted -> set lobby `phase = VOTING` and emit `phase-change`.
 7) Voting: one vote per player, no self-votes; highest vote count marks logically eliminated players (ties allowed).
-8) Resolution: apply each operation’s `modifyWinCondition` (if any) using the tallied round result, then emit final results and clean per-game tables (players, votes, rounds).
+8) Resolution: apply the configured operation hooks using the tallied round result, then emit final results and clean round state. Lobby membership remains available for a new single-round game.
 
 ## Data and events
 - DB fields: `players.team`, `players.operation`, `players.operation_info`, `players.operation_assigned`, `players.operation_accepted`.
-- Socket events (server → clients): `your-team`, `operation-prepared`, `operation-assigned-public`, `operation-assigned`, `phase-change`.
+- Socket events (server → clients): `your-team` (private), `operation-prepared`, `operation-assigned-public`, `operation-assigned`, `phase-change`.
 - Hidden ops show as `operation: "hidden operation"` in `operation-assigned-public`; the real op is sent privately.
 
 ## Operations reference
