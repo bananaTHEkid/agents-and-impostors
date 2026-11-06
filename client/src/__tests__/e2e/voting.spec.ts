@@ -76,6 +76,13 @@ test.describe('Voting Behavior', () => {
     await Promise.all(pages.map(p => p.setViewportSize({ width: 1920, height: 1080 })));
 
     try {
+      const lobbyCode = await LobbyHelpers.createLobby(pages[0], usernames[0]);
+      for (let i = 1; i < pages.length; i++) {
+        await LobbyHelpers.joinLobby(pages[i], usernames[i], lobbyCode);
+        await LobbyHelpers.waitForPlayerCount(pages.slice(0, i + 1), i + 1, 120000);
+      }
+      await pages[0].getByTestId('start-game-button').click();
+      await expect(pages[0].getByTestId('game-room')).toBeVisible({ timeout: 60000 });
 
       // All players accept their assignments to reach Voting phase
       console.log('Waiting for all players to accept assignments...');
@@ -292,31 +299,40 @@ test.describe('Voting Behavior', () => {
       // Accept all assignments (fast-forward to voting)
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const phaseContent = page.getByTestId('phase-content');
+        let anyVoting = false;
+        for (const candidate of pages) {
+          if (await candidate.getByTestId('phase-content').getByText(/Stimme für den Spieler/i).isVisible().catch(() => false)) {
+            anyVoting = true;
+            break;
+          }
+        }
+        if (anyVoting) break;
 
-        // Wait for phase content
+        const phaseContent = page.getByTestId('phase-content');
         await phaseContent.waitFor({ timeout: 30000 });
 
-        // Wait until voting is visible or accept button is ready
         const pollDeadline = Date.now() + 45000;
         while (Date.now() < pollDeadline) {
-          const votingVisible = await page
-            .getByTestId('phase-content')
-            .getByText(/Stimme für den Spieler/i)
-            .isVisible()
-            .catch(() => false);
+          const votingVisible = await phaseContent.getByText(/Stimme für den Spieler/i).isVisible().catch(() => false);
           const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
           const acceptVisible = await acceptBtn.isVisible().catch(() => false);
           if (votingVisible || acceptVisible) break;
           await page.waitForTimeout(500);
         }
 
+        const didMulti = await selectOperationTargets(phaseContent, usernames[i], usernames, 2);
+        if (didMulti) continue;
+
+        const didSingle = await selectOperationTargets(phaseContent, usernames[i], usernames, 1);
+        if (didSingle) continue;
+
         const acceptBtn = phaseContent.getByTestId('accept-assignment-btn');
         if (await acceptBtn.isVisible().catch(() => false)) {
-          const enabled = !(await acceptBtn.isDisabled().catch(() => false));
-          if (enabled) {
-            await acceptBtn.click();
-          }
+          await expect(acceptBtn).toBeEnabled({ timeout: 10000 });
+          await acceptBtn.click();
+          await expect(acceptBtn).toBeDisabled({ timeout: 3000 }).catch(async () => {
+            await expect(acceptBtn).toBeHidden({ timeout: 3000 });
+          });
         }
       }
 
@@ -335,32 +351,12 @@ test.describe('Voting Behavior', () => {
       const votePromises = pages.map(async (page, i) => {
         const phaseContent = page.getByTestId('phase-content');
         const voteTarget = usernames[(i + 1) % usernames.length];
+        const voteButton = phaseContent.getByRole('button', { name: voteTarget, exact: true });
+        await expect(voteButton).toBeVisible({ timeout: 15000 });
+        await expect(voteButton).toBeEnabled({ timeout: 15000 });
+        await voteButton.click();
 
-        const allButtons = phaseContent.getByRole('button');
-        const buttonCount = await allButtons.count();
-        
-        for (let btnIdx = 0; btnIdx < buttonCount; btnIdx++) {
-          const btn = allButtons.nth(btnIdx);
-          const text = await btn.textContent().catch(() => '');
-          if (text && text.includes(voteTarget)) {
-            const enabled = !(await btn.isDisabled().catch(() => false));
-            if (enabled) {
-              await btn.click();
-              
-              // Wait for confirmation
-              const confDeadline = Date.now() + 8000;
-              while (Date.now() < confDeadline) {
-                const confirmed = await phaseContent
-                  .getByText(/Deine Stimme|your vote/i)
-                  .isVisible()
-                  .catch(() => false);
-                if (confirmed) break;
-                await page.waitForTimeout(300);
-              }
-            }
-            break;
-          }
-        }
+        await expect(phaseContent.getByText(/Deine Stimme für/i)).toBeVisible({ timeout: 8000 });
       });
 
       await Promise.all(votePromises);
