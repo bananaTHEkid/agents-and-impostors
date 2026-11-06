@@ -106,6 +106,8 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
             return { success: false, error: "Spieler in Lobby nicht gefunden" };
         }
 
+        await db.exec("BEGIN TRANSACTION");
+
         // Delete the player
         const deleteResult = await db.run(
             "DELETE FROM players WHERE username = ? AND lobby_id = ?",
@@ -114,6 +116,7 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
 
         // Verify deletion was successful
         if (deleteResult.changes === 0) {
+            await db.exec("ROLLBACK");
             return { success: false, error: "Spieler konnte nicht aus der Lobby entfernt werden" };
         }
 
@@ -124,12 +127,23 @@ export async function leaveLobby(lobbyCode: string, username: string): Promise<{
         );
 
         if (remainingPlayers.count === 0) {
+            // Remove child records before deleting the lobby referenced by them.
+            await db.run("DELETE FROM connection_sessions WHERE lobby_id = ?", [lobbyId]);
+            await db.run("DELETE FROM votes WHERE lobby_id = ?", [lobbyId]);
+            await db.run("DELETE FROM rounds WHERE lobby_id = ?", [lobbyId]);
             await db.run("DELETE FROM lobbies WHERE id = ?", [lobbyId]);
+            await db.exec("COMMIT");
             return { success: true, lobbyClosed: true };
         }
 
+        await db.exec("COMMIT");
         return { success: true, lobbyClosed: false };
     } catch (error) {
+        try {
+            await db.exec("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("Fehler beim Zurücksetzen der leaveLobby-Transaktion:", rollbackError);
+        }
         console.error("Fehler in leaveLobby:", error);
         return { success: false, error: "Datenbankfehler aufgetreten" };
     }
