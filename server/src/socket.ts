@@ -28,6 +28,34 @@ function advanceTurn(lobbyId: string) {
   io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: next, turnIndex: state.turnIndex });
 }
 
+async function validateActiveAssignment(
+  lobbyId: string,
+  username: string,
+  db: ReturnType<typeof getDB>
+): Promise<{ valid: boolean; message?: string }> {
+  const lobby = await db.get('SELECT phase FROM lobbies WHERE id = ?', [lobbyId]);
+  if (!lobby || lobby.phase !== GamePhase.OPERATION_ASSIGNMENT) {
+    return { valid: false, message: 'Operationen können derzeit nicht ausgeführt werden.' };
+  }
+
+  const player = await db.get(
+    'SELECT operation_assigned, operation_accepted FROM players WHERE lobby_id = ? AND username = ?',
+    [lobbyId, username]
+  );
+  if (!player || player.operation_assigned !== 1) {
+    return { valid: false, message: 'Deine Operation ist noch nicht an der Reihe.' };
+  }
+  if (player.operation_accepted === 1) {
+    return { valid: false, message: 'Diese Operation wurde bereits bestätigt.' };
+  }
+
+  const turnState = turnStateByLobby[lobbyId];
+  if (turnState && turnState.order[turnState.turnIndex] !== username) {
+    return { valid: false, message: 'Du bist nicht an der Reihe.' };
+  }
+  return { valid: true };
+}
+
 export function getIO() {
   return io;
 }
@@ -66,7 +94,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        const player = await db.get('SELECT id, team, operation, operation_info FROM players WHERE username = ? AND lobby_id = ?', [username, lobby.id]);
+        const player = await db.get(
+          'SELECT id, team, operation, operation_info, operation_assigned, operation_accepted FROM players WHERE username = ? AND lobby_id = ?',
+          [username, lobby.id]
+        );
         if (!player) {
           socket.emit('error', { message: 'Du bist nicht mehr in diesem Spiel. Wiedereintritt nicht möglich.' });
           return;
@@ -131,6 +162,9 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             } catch (parseError) {
               console.error(`Error parsing operation_info for ${username}:`, parseError);
             }
+          }
+          if (player.operation_accepted === 1) {
+            socket.emit('assignment-accepted', { success: true });
           }
         }
 
@@ -255,6 +289,14 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         await db.run(`UPDATE lobbies SET total_rounds = ?, current_round = 1, status = 'playing', phase = ? WHERE id = ?`, [1, GamePhase.TEAM_ASSIGNMENT, lobbyId]);
+        await db.run(
+          `UPDATE players
+           SET team = '', operation = NULL, operation_info = NULL,
+               operation_assigned = 0, operation_accepted = 0,
+               eliminated = 0, win_status = NULL
+           WHERE lobby_id = ?`,
+          [lobbyId]
+        );
 
         await gameService.startNewRound(lobbyId, 1, {});
 
@@ -363,6 +405,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         }
 
         console.log(`Received accept-assignment from ${username} for lobby ${lobbyCode} (id: ${lobbyId})`);
+        const assignmentValidation = await validateActiveAssignment(lobbyId, username, db);
+        if (!assignmentValidation.valid) {
+          socket.emit('game-error', { message: assignmentValidation.message });
+          return;
+        }
         io?.to(lobbyId).emit('game-message', { type: 'system', text: `${username} accepted their assignment.` });
 
         // Ensure player has submitted any required operation inputs before accepting
@@ -563,10 +610,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const db = getDB();
         // Ensure it's the emitter's turn
         const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
-        const turnState = turnStateByLobby[lobbyId];
-        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
-          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+        const assignmentValidation = await validateActiveAssignment(lobbyId, emitter || '', db);
+        if (!assignmentValidation.valid) {
+          socket.emit('not-your-turn', { message: assignmentValidation.message });
+          socket.emit('game-error', { message: assignmentValidation.message });
           return;
         }
         if (!validateVoteData(emitter || '', targetPlayer)) {
@@ -717,10 +764,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         const db = getDB();
         // Ensure it's the emitter's turn
         const emitter = connectionManager.getUsername(socket.id) || socket.handshake.auth?.username;
-        const turnState = turnStateByLobby[lobbyId];
-        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
-          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+        const assignmentValidation = await validateActiveAssignment(lobbyId, emitter || '', db);
+        if (!assignmentValidation.valid) {
+          socket.emit('not-your-turn', { message: assignmentValidation.message });
+          socket.emit('game-error', { message: assignmentValidation.message });
           return;
         }
         if (!validateVoteData(emitter || '', targetPlayer)) {
@@ -847,10 +894,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
-        const turnState = turnStateByLobby[lobbyId];
-        if (turnState && turnState.order[turnState.turnIndex] !== emitter) {
-          socket.emit('not-your-turn', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
-          socket.emit('game-error', { message: 'Du bist nicht an der Reihe, diese Operation auszuführen.' });
+        const assignmentValidation = await validateActiveAssignment(lobbyId, emitter, db);
+        if (!assignmentValidation.valid) {
+          socket.emit('not-your-turn', { message: assignmentValidation.message });
+          socket.emit('game-error', { message: assignmentValidation.message });
           return;
         }
 
@@ -1090,7 +1137,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.to(lobbyId).emit('player-voted', { username });
 
         const [activePlayers, submittedVotes] = await Promise.all([
-          db.all('SELECT COUNT(*) as count FROM players WHERE lobby_id = ?', [lobbyId]),
+          db.all('SELECT COUNT(*) as count FROM players WHERE lobby_id = ? AND eliminated = 0', [lobbyId]),
           db.all('SELECT COUNT(*) as count FROM votes WHERE lobby_id = ? AND round_number = ?', [lobbyId, currentLobbyRound])
         ]);
 
