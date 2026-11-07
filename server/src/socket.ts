@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { getDB } from './db/db';
-import { GamePhase } from './game-logic/types';
+import { FinalResults, GamePhase } from './game-logic/types';
 import { GAME_CONFIG, OPERATION_CONFIG } from './game-logic/config';
 import * as gameService from './game-logic/gameService';
 import * as lobbyService from './lobby-manager/lobbyService';
@@ -17,6 +17,7 @@ import {
 
 let io: Server | null = null;
 const playerOperationsByLobby: { [lobbyId: string]: any[] } = {};
+const finalResultsByLobby: { [lobbyId: string]: FinalResults } = {};
 // In-memory turn state per lobby. Persisting in DB is optional and can be added later.
 const turnStateByLobby: { [lobbyId: string]: { order: string[]; turnIndex: number } } = {};
 
@@ -89,7 +90,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('error', { message: 'Lobby nicht gefunden' });
           return;
         }
-        if (lobby.phase === 'waiting' || lobby.status === 'waiting') {
+        const cachedFinalResults = finalResultsByLobby[lobby.id];
+        if ((lobby.phase === 'waiting' || lobby.status === 'waiting') && !cachedFinalResults) {
           socket.emit('error', { message: "Wiedereintritt nicht möglich: Das Spiel hat noch nicht begonnen. Bitte verwende 'join-lobby', um der Lobby beizutreten." });
           return;
         }
@@ -130,6 +132,32 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         socket.join(lobby.id);
 
         await gameService.saveConnectionSession(socket.id, username, lobby.id, lobbyCode);
+
+        if (cachedFinalResults) {
+          socket.emit('game-state', {
+            phase: GamePhase.COMPLETED,
+            currentState: 'completed',
+            round: cachedFinalResults.totalRounds,
+            totalRounds: cachedFinalResults.totalRounds,
+            results: cachedFinalResults.players.map(player => ({
+              username: player.username,
+              team: player.team,
+              operation: player.operation,
+              win_status: player.winStatus
+            }))
+          });
+          socket.emit('player-list', {
+            players: cachedFinalResults.players.map(player => ({
+              username: player.username,
+              team: player.team,
+              operation: player.operation,
+              eliminated: cachedFinalResults.roundResults[0]?.eliminatedPlayers.includes(player.username) ?? false
+            }))
+          });
+          socket.emit('game-end', cachedFinalResults);
+          socket.emit('phase-change', { phase: GamePhase.COMPLETED, message: 'Das Spiel ist beendet.' });
+          return;
+        }
 
         socket.emit('game-state', {
           phase: lobby.phase,
@@ -1149,6 +1177,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           io?.to(lobbyId).emit('voting-complete', roundResult);
 
           const finalResults = await gameService.calculateFinalResults(lobbyId);
+          finalResultsByLobby[lobbyId] = finalResults;
 
           const nextAction = await gameService.endRound(lobbyId, roundResult, {}, io as Server);
 
@@ -1156,6 +1185,9 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           if (nextAction === 'game_end') {
             console.log(`Emitting game-end to lobby ${lobbyId}`);
             io?.to(lobbyId).emit('game-end', finalResults);
+            setTimeout(() => {
+              delete finalResultsByLobby[lobbyId];
+            }, 10 * 60 * 1000);
           }
         }
       } catch (error) {

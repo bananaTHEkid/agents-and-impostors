@@ -4,6 +4,7 @@ export enum GamePhase {
   OPERATION_ASSIGNMENT = 'operation_assignment',
   VOTING = 'voting',
   RESULTS = 'results',
+  COMPLETED = 'completed',
 }
 
 export interface RoundResult {
