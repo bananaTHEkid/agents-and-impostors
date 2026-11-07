@@ -136,6 +136,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     // Listen for game start
     socket.on("game-started", (data: { phase: GamePhase; message: string }) => {
       setCurrentPhase(data.phase);
+      operationPreparedRef.current = false;
+      setMyOperation(null);
     });
 
     // Listen for phase changes

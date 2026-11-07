@@ -91,6 +91,22 @@ describe('GameRoom Component', () => {
     });
   });
 
+  it('keeps a prepared operation when phase state is replayed', async () => {
+    render(<GameRoom {...mockProps} />);
+
+    await act(async () => {
+      await triggerSocketEvent('operation-prepared', {
+        operation: 'scapegoat',
+        info: { message: 'Du gewinnst, wenn du herausgew?hlt wirst.' },
+      });
+      await triggerSocketEvent('game-state', { phase: 'operation_assignment' });
+      await triggerSocketEvent('phase-change', { phase: 'operation_assignment' });
+    });
+
+    expect(screen.getByText('Operation: scapegoat')).toBeInTheDocument();
+    expect(screen.getByTestId('accept-assignment-btn')).toBeInTheDocument();
+  });
+
   // Removed: Spielnachrichten logging has been deleted; operation assignment no longer logs to UI
 
   it('displays game results', async () => {
