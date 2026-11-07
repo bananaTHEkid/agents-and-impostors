@@ -61,7 +61,8 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ open, onClose }) => {
             <ul className="list-decimal pl-5 space-y-1 text-sm">
               <li><span className="font-medium">Team Zuweisung:</span> Jeder Spieler erhält geheim sein Team.</li>
               <li><span className="font-medium">Operationen:</span> Jeder Spieler bekommt eine <em>Operation</em>, die entweder Informationen enthüllt oder das Ziel des Spielers verändert.</li>
-              <li><span className="font-medium">Abstimmung:</span> Es wird ein Spieler ausgewählt, von dem vermutet wird, dass dieser der Hochstapler ist. Anhand des Teams (und ggf. individueller Ziele) wird automatisch ausgewertet, wer gewinnt oder verliert.</li>
+              <li><span className="font-medium">Abstimmung:</span> Jeder stimmt einmal ab. Bei einer eindeutigen Mehrheit wird genau eine Person herausgewählt. Bei Gleichstand wird niemand herausgewählt und die Hochstapler gewinnen die Grundwertung.</li>
+              <li><span className="font-medium">Auswertung:</span> Wird ein Agent herausgewählt, gewinnen die Hochstapler. Wird ein Hochstapler herausgewählt, gewinnen die Agenten. Operationen können den persönlichen Status einzelner Spieler verändern.</li>
             </ul>
           </div>
           <div className="space-y-3">

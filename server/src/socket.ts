@@ -547,6 +547,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             [lobbyId]
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await gameService.applyPreVoteOperations(lobbyId);
+            await gameService.applyPreVoteOperations(lobbyId);
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
             io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen für Lobby ${lobbyCode} (ID: ${lobbyId}) akzeptiert. In die ABSTIMMUNGSPHASE gewechselt.`);
@@ -618,6 +620,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           // After auto-assigning all offline players, if no online candidate remained, move to voting
           const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
           if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+            await gameService.applyPreVoteOperations(lobbyId);
+            await gameService.applyPreVoteOperations(lobbyId);
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
             io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen abgeschlossen für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
@@ -755,6 +759,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             if (!assignedOnlineNext) {
               const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
               if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+                await gameService.applyPreVoteOperations(lobbyId);
                 await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
                 io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
               }
@@ -770,6 +775,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             [lobbyId]
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await gameService.applyPreVoteOperations(lobbyId);
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
             io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen akzeptiert (durch Geständnis) für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
@@ -854,6 +860,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             [lobbyId]
           );
           if (remainingUnaccepted && remainingUnaccepted.cnt === 0) {
+            await gameService.applyPreVoteOperations(lobbyId);
             await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
             io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen akzeptiert. Abstimmungsphase beginnt!' });
             console.log(`Alle Zuweisungen akzeptiert (durch Überläufer) für Lobby ${lobbyCode} (ID: ${lobbyId}). In die ABSTIMMUNGSPHASE gewechselt.`);
@@ -907,6 +914,7 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
             if (!assignedOnlineNext) {
               const remainingUnassigned = await db.get('SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ? AND operation_assigned = 0', [lobbyId]);
               if (!remainingUnassigned || remainingUnassigned.cnt === 0) {
+                await gameService.applyPreVoteOperations(lobbyId);
                 await db.run('UPDATE lobbies SET phase = ? WHERE id = ?', [GamePhase.VOTING, lobbyId]);
                 io?.to(lobbyId).emit('phase-change', { phase: GamePhase.VOTING, message: 'Alle Zuweisungen abgeschlossen. Abstimmungsphase beginnt!' });
               }

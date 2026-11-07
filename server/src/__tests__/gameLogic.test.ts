@@ -1,5 +1,5 @@
 import { initDB, getDB } from '../db/db';
-import { assignTeamsAndOperations } from '../game-logic/gameService';
+import { assignTeamsAndOperations, calculateRoundResults } from '../game-logic/gameService';
 import { GAME_CONFIG, OPERATION_CONFIG } from '../game-logic/config';
 import { RoundResult } from '../game-logic/types';
 
@@ -77,6 +77,90 @@ describe('operation rules', () => {
     await getDB().run(
       "INSERT INTO lobbies (id, lobby_code, status, phase) VALUES ('lobby-1', 'ABC123', 'playing', 'voting')"
     );
+  });
+
+  describe('one-round voting rules', () => {
+    beforeEach(async () => {
+      await initDB(true);
+      await getDB().run(
+        "INSERT INTO lobbies (id, lobby_code, status, phase, current_round) VALUES ('lobby-1', 'ABC123', 'playing', 'voting', 1)"
+      );
+    });
+
+    async function seedVotingPlayer(username: string, team: string, operation: string | null = null, info: object | null = null) {
+      await getDB().run(
+        "INSERT INTO players (username, lobby_id, team, operation, operation_info) VALUES (?, 'lobby-1', ?, ?, ?)",
+        [username, team, operation, info ? JSON.stringify(info) : null]
+      );
+    }
+
+    async function addVote(voter: string, target: string) {
+      await getDB().run(
+        "INSERT INTO votes (lobby_id, voter, target, round_number) VALUES ('lobby-1', ?, ?, 1)",
+        [voter, target]
+      );
+    }
+
+    it('eliminates exactly one agent and awards the base win to impostors', async () => {
+      await seedVotingPlayer('agent-voted', 'agent');
+      await seedVotingPlayer('agent-2', 'agent');
+      await seedVotingPlayer('impostor', 'impostor');
+      await addVote('agent-2', 'agent-voted');
+      await addVote('impostor', 'agent-voted');
+      await addVote('agent-voted', 'impostor');
+
+      const result = await calculateRoundResults('lobby-1');
+
+      expect(result.eliminatedPlayers).toEqual(['agent-voted']);
+      expect(result.winner).toBe('impostor');
+    });
+
+    it('eliminates exactly one impostor and awards the base win to agents', async () => {
+      await seedVotingPlayer('agent-1', 'agent');
+      await seedVotingPlayer('agent-2', 'agent');
+      await seedVotingPlayer('impostor-voted', 'impostor');
+      await addVote('agent-1', 'impostor-voted');
+      await addVote('agent-2', 'impostor-voted');
+      await addVote('impostor-voted', 'agent-1');
+
+      const result = await calculateRoundResults('lobby-1');
+
+      expect(result.eliminatedPlayers).toEqual(['impostor-voted']);
+      expect(result.winner).toBe('agent');
+    });
+
+    it('awards impostors the win and eliminates nobody on a tie', async () => {
+      await seedVotingPlayer('agent-1', 'agent');
+      await seedVotingPlayer('agent-2', 'agent');
+      await seedVotingPlayer('impostor-1', 'impostor');
+      await seedVotingPlayer('impostor-2', 'impostor');
+      await addVote('agent-1', 'impostor-1');
+      await addVote('agent-2', 'impostor-2');
+      await addVote('impostor-1', 'agent-1');
+      await addVote('impostor-2', 'agent-2');
+
+      const result = await calculateRoundResults('lobby-1');
+
+      expect(result.eliminatedPlayers).toEqual([]);
+      expect(result.winner).toBe('impostor');
+    });
+
+    it('applies personal operation outcomes without changing the global winner', async () => {
+      await seedVotingPlayer('scapegoat', 'agent', 'scapegoat');
+      await seedVotingPlayer('agent-2', 'agent');
+      await seedVotingPlayer('impostor', 'impostor');
+      await addVote('agent-2', 'scapegoat');
+      await addVote('impostor', 'scapegoat');
+      await addVote('scapegoat', 'impostor');
+
+      const result = await calculateRoundResults('lobby-1');
+      const row = await getDB().get(
+        "SELECT win_status FROM players WHERE lobby_id = 'lobby-1' AND username = 'scapegoat'"
+      );
+
+      expect(result.winner).toBe('impostor');
+      expect(row.win_status).toBe('win');
+    });
   });
 
   async function seedPlayer(username: string, team: string, operation: string, info: object) {

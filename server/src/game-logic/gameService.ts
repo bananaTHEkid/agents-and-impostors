@@ -141,51 +141,12 @@ export async function startNewRound(lobbyId: string, roundNumber: number, lobbie
 
 export async function processSpecialOperations(lobbyId: string, roundResult: RoundResult) {
     const db = getDB();
-    // Determine player count to cap how many win-condition-modifying operations run this round
-    const playerCountRow = await db.get(`SELECT COUNT(*) as cnt FROM players WHERE lobby_id = ?`, [lobbyId]);
-    const playerCount = playerCountRow?.cnt ?? 0;
-    // Caps:
-    // - <= 6 players: 1 operation
-    // - <= 9 players: 2 operations
-    // - >= 10 players: 3 operations
-    const allowedOpsThisRound = playerCount <= 6 ? 1 : (playerCount <= 9 ? 2 : 3);
-
-    // Pull players with operations in a deterministic order
     const playersWithOps = await db.all(`
         SELECT username, operation, operation_info 
         FROM players 
         WHERE lobby_id = ? AND operation IS NOT NULL
         ORDER BY username ASC
     `, [lobbyId]);
-
-    // Only these operations are allowed to modify win conditions this round
-    const winConditionOps = new Set(['grudge', 'infatuation', 'sleeper agent', 'sleeper', 'scapegoat', 'defector']);
-    // Prioritize a subset that strongly affects outcomes
-    const priorityOps = new Set(['sleeper agent', 'sleeper', 'defector', 'scapegoat', 'grudge']);
-
-    // Filter to only those that actually implement modifyWinCondition
-    const hasModifier = (opName: string) => {
-        const op = OPERATION_CONFIG[opName];
-        return !!op?.modifyWinCondition;
-    };
-
-    // Consider only the specified win-condition operations
-    const eligible = playersWithOps.filter((p: any) => winConditionOps.has(p.operation) && hasModifier(p.operation));
-    const priorityCandidates = eligible.filter((p: any) => priorityOps.has(p.operation));
-    const otherCandidates = eligible.filter((p: any) => !priorityOps.has(p.operation));
-
-    // Select up to allowedOpsThisRound, taking from priority first, then others
-    const selected: Array<any> = [];
-    for (const p of priorityCandidates) {
-        if (selected.length >= allowedOpsThisRound) break;
-        selected.push(p);
-    }
-    if (selected.length < allowedOpsThisRound) {
-        for (const p of otherCandidates) {
-            if (selected.length >= allowedOpsThisRound) break;
-            selected.push(p);
-        }
-    }
 
     const getTeamsMap = async () => {
         const allPlayersInLobby = await db.all(`
@@ -199,8 +160,9 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
         } as { list: string[]; map: Record<string, string> };
     };
 
-    // Run only the selected operations' modifyWinCondition in this round
-    for (const player of selected) {
+    // Resolve every assigned operation. There is intentionally no player-count
+    // cap: each player receives exactly one operation and every hook runs.
+    for (const player of playersWithOps) {
         const operationDetails = OPERATION_CONFIG[player.operation];
         if (!operationDetails?.modifyWinCondition) continue;
         try {
@@ -219,45 +181,78 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
     }
 }
 
+export async function applyPreVoteOperations(lobbyId: string): Promise<void> {
+    const db = getDB();
+    const players = await db.all('SELECT username, team FROM players WHERE lobby_id = ?', [lobbyId]);
+    const operations = await db.all(`
+        SELECT username, operation
+        FROM players
+        WHERE lobby_id = ? AND operation IN ('sleeper agent', 'spy transfer', 'defector')
+        ORDER BY username ASC
+    `, [lobbyId]);
+    const teams = players.reduce((map: Record<string, string>, player: any) => {
+        map[player.username] = player.team;
+        return map;
+    }, {});
+    const preVoteResult: RoundResult = {
+        winner: 'agent',
+        eliminatedPlayers: [],
+        votes: {},
+        roundNumber: 0
+    };
+
+    for (const player of operations) {
+        const operation = OPERATION_CONFIG[player.operation];
+        if (!operation?.modifyWinCondition) continue;
+        await operation.modifyWinCondition(
+            lobbyId,
+            players.map((player: any) => player.username),
+            {},
+            teams,
+            db,
+            preVoteResult
+        );
+    }
+}
+
+function calculateVoteOutcome(
+    players: Array<{ username: string; team: string }>,
+    votes: Array<{ voter: string; target: string }>
+) {
+    const voteCounts: Record<string, number> = {};
+    players.forEach(player => { voteCounts[player.username] = 0; });
+    votes.forEach(vote => { if (voteCounts[vote.target] !== undefined) voteCounts[vote.target]++; });
+
+    const maxVotes = votes.length ? Math.max(...Object.values(voteCounts)) : 0;
+    const leaders = maxVotes > 0
+        ? Object.entries(voteCounts).filter(([, count]) => count === maxVotes).map(([player]) => player)
+        : [];
+    const eliminatedPlayers = leaders.length === 1 ? leaders : [];
+    const eliminated = eliminatedPlayers.length === 1
+        ? players.find(player => player.username === eliminatedPlayers[0])
+        : undefined;
+
+    return {
+        eliminatedPlayers,
+        winner: eliminated?.team === 'impostor' ? 'agent' as const : 'impostor' as const
+    };
+}
+
 export async function calculateRoundResults(lobbyId: string): Promise<RoundResult> {
     const db = getDB();
     const lobby = await db.get(`SELECT current_round FROM lobbies WHERE id = ?`, [lobbyId]);
-    // For single-round/no-elimination mode include all players when computing results
+    await applyPreVoteOperations(lobbyId);
     const players = await db.all(`SELECT username, team FROM players WHERE lobby_id = ?`, [lobbyId]);
     const votes = await db.all(`SELECT voter, target FROM votes WHERE lobby_id = ? AND round_number = ?`, [lobbyId, lobby.current_round]);
 
     const voteRecord: Record<string, string> = {};
     votes.forEach(vote => { voteRecord[vote.voter] = vote.target; });
 
-    const voteCounts: Record<string, number> = {};
-    players.forEach(player => { voteCounts[player.username] = 0; });
-    votes.forEach(vote => { if (voteCounts[vote.target] !== undefined) voteCounts[vote.target]++; });
+    const outcome = calculateVoteOutcome(players, votes);
 
-    const maxVotes = votes.length ? Math.max(...Object.values(voteCounts)) : 0;
-    const eliminatedPlayers = votes.length
-        ? Object.entries(voteCounts).filter(([_, count]) => count === maxVotes).map(([player]) => player)
-        : [];
-
-    // In single-round/no-elimination mode we do not persist eliminations to the DB.
-    // eliminatedPlayers is a logical result (players who received the most votes).
-    const remainingPlayers = players.filter(p => !eliminatedPlayers.includes(p.username));
-    const teamCounts = remainingPlayers.reduce((acc, player) => {
-        acc[player.team] = (acc[player.team] || 0) + 1;
-        return acc;
-    }, {} as Record<string, number>);
-
-    let winner: 'agent' | 'impostor';
-    if (!teamCounts['impostor'] || teamCounts['impostor'] === 0) {
-        winner = 'agent';
-    } else if (!teamCounts['agent'] || teamCounts['agent'] <= teamCounts['impostor']) {
-        winner = 'impostor';
-    } else {
-        winner = 'agent';
-    }
-    
     const currentRoundResult: RoundResult = {
-        winner,
-        eliminatedPlayers,
+        winner: outcome.winner,
+        eliminatedPlayers: outcome.eliminatedPlayers,
         votes: voteRecord,
         roundNumber: lobby.current_round
     };
@@ -279,32 +274,10 @@ export async function calculateFinalResults(lobbyId: string): Promise<FinalResul
     const voteRecord: Record<string, string> = {};
     votes.forEach(v => { voteRecord[v.voter] = v.target; });
 
-    // Count votes per target
     const playersList = await db.all(`SELECT username, team, operation, win_status FROM players WHERE lobby_id = ?`, [lobbyId]);
-    const voteCounts: Record<string, number> = {};
-    playersList.forEach(p => { voteCounts[p.username] = 0; });
-    votes.forEach(v => { if (voteCounts[v.target] !== undefined) voteCounts[v.target]++; });
-
-    const maxVotes = votes.length ? Math.max(...Object.values(voteCounts)) : 0;
-    const eliminatedPlayers = votes.length
-        ? Object.entries(voteCounts).filter(([_, c]) => c === maxVotes).map(([name]) => name)
-        : [];
-
-    // Determine winner by same logic as round calculation
-    const remainingPlayers = playersList.filter(p => !eliminatedPlayers.includes(p.username));
-    const teamCounts = remainingPlayers.reduce((acc: Record<string, number>, player) => {
-        acc[player.team] = (acc[player.team] || 0) + 1;
-        return acc;
-    }, {} as Record<string, number>);
-
-    let overallWinner: 'agent' | 'impostor';
-    if (!teamCounts['impostor'] || teamCounts['impostor'] === 0) {
-        overallWinner = 'agent';
-    } else if (!teamCounts['agent'] || teamCounts['agent'] <= teamCounts['impostor']) {
-        overallWinner = 'impostor';
-    } else {
-        overallWinner = 'agent';
-    }
+    const outcome = calculateVoteOutcome(playersList, votes);
+    const overallWinner = outcome.winner;
+    const eliminatedPlayers = outcome.eliminatedPlayers;
 
     // Team scores: single round
     const teamScores: { agent: number; impostor: number } = { agent: 0, impostor: 0 };

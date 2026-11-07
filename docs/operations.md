@@ -9,8 +9,9 @@ This doc explains how the server assigns teams/operations, reveals them, process
 4) Sequential reveal: emit room-level `operation-assigned-public` (name or `"hidden operation"`), then send `operation-assigned` to the player. Player replies with `accept-assignment` to advance.
 5) Disconnects: if a player is offline at their turn, mark `operation_assigned = 1` and `operation_accepted = 1`, keep their `operation_info`, and continue.
 6) All accepted -> set lobby `phase = VOTING` and emit `phase-change`.
-7) Voting: one vote per player, no self-votes; highest vote count marks logically eliminated players (ties allowed).
-8) Resolution: apply the configured operation hooks using the tallied round result, then emit final results and clean round state. Lobby membership remains available for a new single-round game.
+7) Voting: one vote per player, no self-votes. A unique highest vote count eliminates exactly one player. A tie eliminates nobody and gives impostors the base win.
+8) Resolution: team-changing operations are applied before the vote outcome is calculated. Every assigned operation is resolved; personal win-condition operations can change only their holder's win status. The base winner is impostors when an agent is eliminated and agents when an impostor is eliminated.
+9) Emit final results and clean round state. Lobby membership remains available for a new single-round game.
 
 ## Data and events
 - DB fields: `players.team`, `players.operation`, `players.operation_info`, `players.operation_assigned`, `players.operation_accepted`.

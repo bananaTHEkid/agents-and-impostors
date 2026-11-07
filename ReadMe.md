@@ -56,8 +56,9 @@ docker compose up -d
 | SERVER_PORT | tests | 5001 | Port for Playwright-started server |
 
 ## How the game resolves a round
-- Votes: one per player (no self-votes). Highest vote count marks logically eliminated players (ties allowed).
-- Operations: server applies operation hooks after votes to adjust teams/win states.
+- Votes: one per player (no self-votes). Exactly one player is eliminated when there is a unique highest vote count; a tie eliminates nobody and gives impostors the base win.
+- Base result: if the eliminated player is an agent, impostors win; if the eliminated player is an impostor, agents win.
+- Operations: every player receives and resolves exactly one operation. Team-changing operations resolve before voting; personal win-condition operations affect only that player's win status.
 - Results: server emits final payload, then deletes per-game data (players, votes, rounds) to keep games ephemeral.
 
 ## Code map
