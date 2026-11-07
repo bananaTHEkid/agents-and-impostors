@@ -2,6 +2,7 @@ import sqlite3 from "sqlite3";
 import { open, Database } from "sqlite";
 
 let dbInstance: Database | null = null;
+let transactionQueue: Promise<void> = Promise.resolve();
 
 /**
  * Initializes the database.
@@ -123,14 +124,28 @@ export const withTransaction = async <T>(
     callback: (db: Database) => Promise<T>
 ): Promise<T | null> => {
     const db = getDB();
+    let release!: () => void;
+    const queued = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const previous = transactionQueue;
+    transactionQueue = previous.then(() => queued);
+
+    await previous;
     try {
         await db.exec("BEGIN TRANSACTION");
         const result = await callback(db);
         await db.exec("COMMIT");
         return result;
     } catch (error) {
-        await db.exec("ROLLBACK");
+        try {
+            await db.exec("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("Transaktion konnte nicht zurückgesetzt werden:", rollbackError);
+        }
         console.error("Transaktion fehlgeschlagen, wird zurückgesetzt:", error);
         throw error;
+    } finally {
+        release();
     }
 };
