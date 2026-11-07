@@ -79,18 +79,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
 
     const currentUsername = sessionStorage.getItem("username") || "";
     
-    // Ensure we're joined to the lobby via socket
-    // This is important for the lobby creator who might not have joined yet
-    if (currentUsername && lobbyCode) {
-      console.log(`[GameLobby] Ensuring socket join for ${currentUsername} to lobby ${lobbyCode}`);
-      socket.emit("join-lobby", { username: currentUsername, lobbyCode }, (response: any) => {
-        console.log('[GameLobby] join-lobby response:', response);
-        if (response && response.success) {
-          console.log('[GameLobby] Successfully joined lobby via socket');
-        }
-      });
-    }
-
     // Funktion zum Abrufen der Spielerliste
     const fetchPlayerList = () => {
       console.log("Fordere Spielerliste an...");
@@ -107,11 +95,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
         }
       });
     };
-
-    // Initiale Spielerliste abrufen (with a small delay to ensure socket join completes)
-    setTimeout(() => {
-      fetchPlayerList();
-    }, 100);
 
     const handlePlayerList = (data: Player[] | { players: Player[] }) => {
       console.log('[GameLobby] Received player-list event:', data); // Debug-Log
@@ -188,6 +171,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ lobbyCode, onExitLobby }) => {
       console.log("Socket wiederverbunden - Fordere Spielerliste an");
       fetchPlayerList();
     });
+
+    // Register listeners before joining/requesting state so fast responses cannot be missed.
+    if (currentUsername && lobbyCode) {
+      console.log(`[GameLobby] Ensuring socket join for ${currentUsername} to lobby ${lobbyCode}`);
+      socket.emit("join-lobby", { username: currentUsername, lobbyCode }, (response: any) => {
+        console.log('[GameLobby] join-lobby response:', response);
+        if (response?.success) fetchPlayerList();
+      });
+    } else if (socket.connected) {
+      fetchPlayerList();
+    }
 
     return () => {
       socket.off("player-list", handlePlayerList);
