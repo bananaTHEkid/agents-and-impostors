@@ -101,15 +101,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   useEffect(() => {
     if (!socket) return;
 
-    // Reconnect to the game if we have a lobby code (include accessToken when available)
-    if (lobbyCode && username) {
-      const accessToken = sessionStorage.getItem("accessToken") || undefined;
-      socket.emit("rejoin-game", { lobbyCode, username, accessToken });
-    }
-
-    // Get initial game state
-    socket.emit("get-game-state", { lobbyCode });
-
     // Listen for game state updates
     socket.on("game-state", (data: GameState) => {
       setGameData(data);
@@ -276,6 +267,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         }, 1200);
       }
     });
+
+    // Register listeners before requesting state so replayed assignment data cannot be missed.
+    if (lobbyCode && username) {
+      const accessToken = sessionStorage.getItem("accessToken") || undefined;
+      socket.emit("rejoin-game", { lobbyCode, username, accessToken });
+    }
+    socket.emit("get-game-state", { lobbyCode });
 
     return () => {
       socket.off("game-state");
