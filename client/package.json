@@ -11,7 +11,7 @@
     "test": "npm run test:unit && npm run test:e2e:dev",
     "test:unit": "vitest",
     "test:e2e": "cross-env START_SERVER=true playwright test",
-    "test:e2e:dev": "playwright test",
+    "test:e2e:dev": "cross-env START_SERVER=true playwright test",
     "test:e2e:dev:with-server": "cross-env START_SERVER=true playwright test",
     "test:e2e:watch": "cross-env START_SERVER=true playwright test --watch",
     "playwright:install": "npx playwright install --with-deps",

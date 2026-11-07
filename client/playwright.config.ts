@@ -65,9 +65,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: [
-    // Server (optional - set START_SERVER=true to enable, or run server manually)
-    // Note: Server is optional because you might want to run it separately
-    ...(process.env.START_SERVER === 'true' ? [{
+    // Start the backend for development E2E runs unless explicitly disabled.
+    ...(process.env.START_SERVER !== 'false' ? [{
       command: 'npm run dev',
       cwd: '../server',
       url: `${SERVER_URL}/health`,
