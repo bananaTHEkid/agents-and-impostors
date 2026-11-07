@@ -41,11 +41,19 @@ interface PlayerOperation {
   used?: boolean; // Client-side flag to indicate if an action has been taken
 }
 
+const phaseOrder: Record<GamePhase, number> = {
+  [GamePhase.WAITING]: 0,
+  [GamePhase.TEAM_ASSIGNMENT]: 1,
+  [GamePhase.OPERATION_ASSIGNMENT]: 2,
+  [GamePhase.VOTING]: 3,
+  [GamePhase.COMPLETED]: 4,
+};
+
 import { useSocket } from '@/Socket/useSocket';
 import { FiLogOut, FiUsers, FiClock } from "react-icons/fi";
 
 const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
   const [gameData, setGameData] = useState<GameState | null>(() => {
     const saved = sessionStorage.getItem('gameData');
     return saved ? JSON.parse(saved) as GameState : null;
@@ -105,7 +113,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
     socket.on("game-state", (data: GameState) => {
       setGameData(data);
       if (data.phase) {
-        setCurrentPhase(data.phase);
+        const incomingPhase = data.phase;
+        setCurrentPhase(previous =>
+          incomingPhase === GamePhase.TEAM_ASSIGNMENT &&
+          operationPreparedRef.current &&
+          phaseOrder[previous] > phaseOrder[incomingPhase]
+            ? previous
+            : incomingPhase
+        );
         // Restore turn from game-state if present
         if ((data as any).currentTurnPlayer) setCurrentTurnPlayer((data as any).currentTurnPlayer as string);
         
@@ -142,7 +157,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
 
     // Listen for phase changes
     socket.on("phase-change", (data: { phase: GamePhase; message: string }) => {
-      setCurrentPhase(data.phase);
+      setCurrentPhase(previous =>
+        data.phase === GamePhase.TEAM_ASSIGNMENT &&
+        operationPreparedRef.current &&
+        phaseOrder[previous] > phaseOrder[data.phase]
+          ? previous
+          : data.phase
+      );
     });
 
     // Listen for team and operation events
@@ -158,6 +179,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
 
     socket.on("operation-prepared", (data: { operation: string; info: PlayerOperation['info'] }) => {
       console.log(`Operation details received for ${data.operation}:`, data.info);
+      operationPreparedRef.current = true;
       // Preserve used flag if same operation gets updated info
       setMyOperation(prev => {
         const used = prev && prev.name === data.operation ? !!prev.used : false;
