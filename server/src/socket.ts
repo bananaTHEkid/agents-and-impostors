@@ -1179,12 +1179,12 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           const finalResults = await gameService.calculateFinalResults(lobbyId);
           finalResultsByLobby[lobbyId] = finalResults;
 
+          // Deliver the immutable result before cleanup changes the lobby state.
+          io?.to(lobbyId).emit('game-end', finalResults);
           const nextAction = await gameService.endRound(lobbyId, roundResult, {}, io as Server);
 
           console.log(`endRound returned: ${nextAction}`);
           if (nextAction === 'game_end') {
-            console.log(`Emitting game-end to lobby ${lobbyId}`);
-            io?.to(lobbyId).emit('game-end', finalResults);
             setTimeout(() => {
               delete finalResultsByLobby[lobbyId];
             }, 10 * 60 * 1000);
