@@ -76,6 +76,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   const [publicOperations, setPublicOperations] = useState<Record<string, string>>({});
   const username: string = sessionStorage.getItem("username") ?? "";
   const [showRules, setShowRules] = useState(false);
+  const [showPlayers, setShowPlayers] = useState(false);
+  const operationPreparedRef = React.useRef(false);
+
+  const phaseLabel: Record<GamePhase, string> = {
+    [GamePhase.WAITING]: 'Warten auf Spielstart',
+    [GamePhase.TEAM_ASSIGNMENT]: 'Team wird verteilt',
+    [GamePhase.OPERATION_ASSIGNMENT]: 'Deine Operation',
+    [GamePhase.VOTING]: 'Abstimmung',
+    [GamePhase.COMPLETED]: 'Ergebnisse',
+  };
 
   // Compute voted counts from finalRound unconditionally to keep hook order stable
   const votedCounts = useMemo(() => {
@@ -361,17 +371,38 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
         
       case GamePhase.OPERATION_ASSIGNMENT:
         return (
-          <div className="text-center p-4">
-            <div className="mt-3">
+          <div className="p-1 sm:p-2">
+            {myOperation ? (
               <OperationPanel
-                operation={myOperation ? { name: myOperation.name, info: myOperation.info, used: myOperation.used } : null}
+                operation={{ name: myOperation.name, info: myOperation.info, used: myOperation.used }}
                 lobbyCode={lobbyCode}
                 username={username}
                 socket={socket}
                 isMyTurn={currentTurnPlayer ? (currentTurnPlayer === username) : undefined}
                 myTeam={players.find(p => p.username === username)?.team}
               />
-            </div>
+            ) : (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-5 text-left sm:p-6">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl shadow-sm" aria-hidden="true">
+                  {currentTurnPlayer && currentTurnPlayer !== username ? '⏳' : '🧭'}
+                </div>
+                <h4 className="text-lg font-semibold text-indigo-950">
+                  {currentTurnPlayer && currentTurnPlayer !== username
+                    ? 'Warte auf deinen Zug'
+                    : 'Deine Operation wird vorbereitet'}
+                </h4>
+                <p className="mt-2 text-sm leading-6 text-indigo-900/80">
+                  {currentTurnPlayer && currentTurnPlayer !== username
+                    ? `Aktuell ist ${currentTurnPlayer} an der Reihe. Du musst gerade nichts auswählen.`
+                    : 'Dir wurde noch keine aktive Operation angezeigt. Warte kurz, bis die Zuweisung abgeschlossen ist.'}
+                </p>
+                {currentTurnPlayer && currentTurnPlayer !== username && (
+                  <p className="mt-4 rounded-lg bg-white/70 px-3 py-2 text-sm font-medium text-indigo-900">
+                    Sobald du an der Reihe bist, erscheint deine Aktion hier.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         );
         
@@ -496,42 +527,44 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
   };
 
   return (
-    <div className="min-h-dvh w-full box-border overflow-x-hidden flex flex-col bg-linear-to-br from-indigo-50 to-indigo-200 px-4 md:px-6 pt-[calc(env(safe-area-inset-top)+1rem)] pb-8 md:pb-10 border-t border-transparent" data-testid="game-room">
-      <div className="max-w-5xl w-full mx-auto mt-6 md:mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div className="min-h-dvh w-full box-border overflow-x-hidden flex flex-col bg-linear-to-br from-indigo-50 to-indigo-200 px-2 sm:px-4 md:px-6 pt-[env(safe-area-inset-top)] pb-6 md:pb-10" data-testid="game-room">
+      <div className="max-w-6xl w-full mx-auto mt-0 sm:mt-4 md:mt-6 bg-white rounded-none sm:rounded-2xl shadow-xl overflow-visible sm:overflow-hidden">
         {/* Header with background */}
-        <div className="bg-linear-to-r from-indigo-600 to-purple-600 py-4 px-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">Triple Game</h2>
-            <div className="flex items-center gap-4">
-              <div className="bg-white/20 text-white rounded-full px-4 py-1 flex items-center gap-2">
-                <FiClock className="text-white/80" />
-                <span>Phase: {currentPhase}</span>
+        <div className="sticky top-0 z-20 bg-linear-to-r from-indigo-600 to-purple-600 px-3 py-3 sm:px-5 sm:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+            <h2 className="text-lg sm:text-2xl font-bold text-white">Triple Game</h2>
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="min-w-0 bg-white/20 text-white rounded-full px-2.5 py-1 sm:px-4 flex items-center gap-1.5 sm:gap-2">
+                <FiClock className="shrink-0 text-white/80" />
+                <span className="max-w-[8rem] truncate text-xs sm:max-w-none sm:text-sm">{phaseLabel[currentPhase]}</span>
               </div>
               <Button
                 type="button"
                 variant="ghost"
-                className="flex items-center gap-2 bg-white/20 text-white hover:bg-white/30"
+                className="flex shrink-0 items-center gap-2 bg-white/20 px-2.5 text-white hover:bg-white/30 sm:px-3"
                 onClick={() => setShowRules(true)}
                 data-testid="game-rules-button"
+                aria-label="Spielregeln öffnen"
               >
                 ℹ️
-                Spielregeln
+                <span className="hidden sm:inline">Spielregeln</span>
               </Button>
               <Button 
                 type="button"
                 variant="ghost"
-                className="flex items-center gap-2 bg-white text-indigo-700 hover:bg-indigo-50"
+                className="flex shrink-0 items-center gap-2 bg-white px-2.5 text-indigo-700 hover:bg-indigo-50 sm:px-3"
                 onClick={handleLeaveGame}
                 data-testid="exit-game-button"
+                aria-label="Spiel verlassen"
               >
                 <FiLogOut />
-                Spiel verlassen
+                <span className="hidden sm:inline">Spiel verlassen</span>
               </Button>
             </div>
           </div>
         </div>
         
-        <div className="p-4 md:p-6">
+        <div className="p-3 sm:p-4 md:p-6">
           <GameRulesModal open={showRules} onClose={() => setShowRules(false)} />
           {errorMessage && (
             <Alert
@@ -543,26 +576,57 @@ const GameRoom: React.FC<GameRoomProps> = ({ lobbyCode, onExitGame }) => {
               {errorMessage}
             </Alert>
           )}
+          <div className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${
+            !isConnected ? 'border-red-200 bg-red-50 text-red-800' :
+            currentPhase === GamePhase.COMPLETED ? 'border-green-200 bg-green-50 text-green-800' :
+            currentPhase === GamePhase.OPERATION_ASSIGNMENT && currentTurnPlayer === username ? 'border-amber-200 bg-amber-50 text-amber-900' :
+            'border-indigo-100 bg-indigo-50 text-indigo-900'
+          }`}>
+            <div>
+              <p className="font-semibold">
+                {!isConnected ? 'Verbindung wird wiederhergestellt...' :
+                  currentPhase === GamePhase.OPERATION_ASSIGNMENT && currentTurnPlayer === username ? 'Du bist dran' :
+                  currentPhase === GamePhase.OPERATION_ASSIGNMENT && currentTurnPlayer ? `${currentTurnPlayer} ist dran` :
+                  phaseLabel[currentPhase]}
+              </p>
+              <p className="text-sm opacity-80">
+                {!isConnected ? 'Dein Spielstand bleibt erhalten.' :
+                  currentPhase === GamePhase.OPERATION_ASSIGNMENT && currentTurnPlayer !== username ? 'Du kannst zusehen, bis du an der Reihe bist.' :
+                  currentPhase === GamePhase.VOTING ? 'Wähle den Spieler, den du verdächtig findest.' :
+                  'Folge der Anleitung im hervorgehobenen Bereich.'}
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-2 text-xs font-medium">
+              <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+              {isConnected ? 'Verbunden' : 'Offline'}
+            </span>
+          </div>
           {/* Operation UI is rendered inside the phase content via OperationPanel */}
-          <div className="flex flex-col gap-6">
+          <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6">
             {/* Main content on top */}
-            <div className="order-1">
+            <div className="order-1 min-w-0">
               <GameInfo className="mb-6" />
-              <div className="phase-content bg-white rounded-xl p-4 border border-gray-100 shadow-sm" data-testid="phase-content">
+              <div className="phase-content min-w-0 overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:p-4" data-testid="phase-content">
                 {renderPhaseContent()}
               </div>
             </div>
 
-            {/* Players list at the bottom */}
-            <div className="order-2">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 max-h-[40vh] overflow-y-auto">
-                <div className="bg-indigo-50 p-4 border-b border-indigo-100">
-                  <div className="flex items-center gap-2">
-                    <FiUsers className="text-indigo-600 text-xl" />
-                    <h3 className="text-xl font-semibold text-gray-800">Spieler</h3>
-                  </div>
-                </div>
-                <div className="divide-y divide-gray-100" role="list">
+            {/* Players list becomes a sidebar on larger screens and stays below content on mobile. */}
+            <div className="order-2 min-w-0">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between bg-indigo-50 p-4 text-left border-b border-indigo-100 lg:cursor-default"
+                onClick={() => setShowPlayers((visible) => !visible)}
+                aria-expanded={showPlayers}
+              >
+                <span className="flex items-center gap-2">
+                  <FiUsers className="text-indigo-600 text-xl" />
+                  <h3 className="text-xl font-semibold text-gray-800">Spieler</h3>
+                </span>
+                <span className="text-sm text-indigo-700 lg:hidden">{showPlayers ? 'Ausblenden' : `${players.length} anzeigen`}</span>
+              </button>
+              <div className={`${showPlayers ? 'block' : 'hidden'} lg:block divide-y divide-gray-100`} role="list">
                   {players.map((player) => {
                     const isCurrent = player.username === currentTurnPlayer;
                     const operationLabel = (() => {

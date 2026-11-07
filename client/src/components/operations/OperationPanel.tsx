@@ -43,6 +43,13 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
   };
 
   const isAllowed = !operation.used && !submitting && (isMyTurn === undefined || isMyTurn === true);
+  const availablePlayers = Array.isArray(operation.info?.availablePlayers) ? operation.info.availablePlayers : [];
+  const targetCount = entry?.renderer?.name === 'MultiChoiceRenderer' ? 2 : availablePlayers.length ? 1 : 0;
+  const instruction = targetCount === 2
+    ? 'Wähle genau 2 Spieler aus und bestätige anschließend.'
+    : targetCount === 1
+      ? 'Wähle 1 Spieler aus und bestätige anschließend.'
+      : 'Lies deine Information und bestätige, sobald du bereit bist.';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -50,6 +57,9 @@ const OperationPanel: React.FC<OperationRendererProps> = ({ operation, lobbyCode
         <h4 className="text-base font-semibold text-gray-800 m-0">Operation</h4>
       </div>
       <div className="p-4">
+        <p className="mb-3 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+          {instruction}
+        </p>
         <Renderer
           operation={operation}
           lobbyCode={lobbyCode}

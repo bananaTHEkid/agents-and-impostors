@@ -62,7 +62,7 @@ describe('GameRoom Component', () => {
 
     // Check that phase indicates team assignment
     await waitFor(() => {
-      expect(screen.getByText(/Phase:\s*team_assignment/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Team wird verteilt/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -86,7 +86,7 @@ describe('GameRoom Component', () => {
 
     // Check that phase indicates voting
     await waitFor(() => {
-      expect(screen.getByText(/Phase:\s*voting/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Abstimmung/i).length).toBeGreaterThan(0);
       expect(screen.getByTestId('phase-content')).toHaveTextContent(/stimme/i);
     });
   });
@@ -97,7 +97,7 @@ describe('GameRoom Component', () => {
     await act(async () => {
       await triggerSocketEvent('operation-prepared', {
         operation: 'scapegoat',
-        info: { message: 'Du gewinnst, wenn du herausgew?hlt wirst.' },
+        info: { message: 'Du gewinnst, wenn du herausgewählt wirst.' },
       });
       await triggerSocketEvent('game-state', { phase: 'operation_assignment' });
       await triggerSocketEvent('phase-change', { phase: 'operation_assignment' });
@@ -129,7 +129,7 @@ describe('GameRoom Component', () => {
 
     await waitFor(() => {
       // Phase set to completed and results section renders
-      expect(screen.getByText(/Phase:\s*completed/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Ergebnisse/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/gewinner/i)).toBeInTheDocument();
     });
   });
@@ -246,11 +246,12 @@ describe('GameRoom Component', () => {
       });
     });
 
-    // Click on a player's button to submit vote immediately
+    // Select a player, then explicitly confirm the vote
     const user = userEvent.setup();
     const playerBtn = screen.getByRole('button', { name: 'player1' });
     await act(async () => {
       await user.click(playerBtn);
+      await user.click(screen.getByTestId('confirm-vote-button'));
     });
   
     // Check the socket emit call was made
@@ -399,6 +400,7 @@ describe('GameRoom Component', () => {
     const user = userEvent.setup();
     await act(async () => {
       await user.click(player1Option);
+      await user.click(screen.getByTestId('confirm-vote-button'));
     });
   
     // Check the socket emit call was made

@@ -17,6 +17,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
   const { socket } = useSocket();
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
   // Removed manual text vote to streamline UX
@@ -27,6 +28,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
 
     const handleVoteSubmitted = (data: { username?: string; vote?: string }) => {
       setHasVoted(true);
+      setIsSubmitting(false);
       if (data?.username) {
         setVotedPlayers(prev => new Set(prev).add(data.username as string));
       }
@@ -40,6 +42,7 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
 
     const handleGameError = (data: { message: string }) => {
       setError(data.message);
+      setIsSubmitting(false);
       // Clear error after 5 seconds
       setTimeout(() => setError(null), 5000);
     };
@@ -56,7 +59,8 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
   }, [socket]);
 
   const submitVote = (voteTarget: string) => {
-    if (!voteTarget || !socket) return;
+    if (!voteTarget || !socket || isSubmitting) return;
+    setIsSubmitting(true);
     socket.emit('submit-vote', {
       lobbyCode,
       username: currentUsername,
@@ -97,9 +101,10 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
           </div>
         ) : (
           <>
+            <p className="mb-3 text-sm text-gray-600">Wähle zuerst eine Person aus. Deine Stimme wird erst nach der Bestätigung abgegeben.</p>
             <div className="space-y-2 mb-4">
               {activePlayers.map((player) => {
-                const disabled = player.username === currentUsername || hasVoted;
+                const disabled = player.username === currentUsername || hasVoted || isSubmitting;
                 const selected = selectedPlayer === player.username;
                 return (
                   <button
@@ -109,8 +114,6 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                     onClick={() => {
                       if (disabled) return;
                       setSelectedPlayer(player.username);
-                      // Emit immediately on direct click (test expects this behavior)
-                      submitVote(player.username);
                     }}
                     aria-label={player.username}
                     className={
@@ -138,8 +141,15 @@ const VotingPanel: React.FC<VotingPanelProps> = ({
                 );
               })}
             </div>
-
-            {/* Manual text voting removed; use player buttons above to submit a vote */}
+            <button
+              type="button"
+              data-testid="confirm-vote-button"
+              disabled={!selectedPlayer || isSubmitting}
+              onClick={() => selectedPlayer && submitVote(selectedPlayer)}
+              className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSubmitting ? 'Stimme wird übermittelt...' : 'Stimme bestätigen'}
+            </button>
           </>
         )}
 

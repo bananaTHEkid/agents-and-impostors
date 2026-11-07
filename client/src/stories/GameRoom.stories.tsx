@@ -61,7 +61,11 @@ const buildRoomDecorator = ({
   roundResult?: RoundResult
 }) =>
   function RoomDecorator(Story: React.ComponentType) {
-    const socket = createMockSocket({
+  if (!operation) {
+    sessionStorage.removeItem("myOperation")
+  }
+
+  const socket = createMockSocket({
       events: {
         connect: undefined,
         "game-state": gameState,
@@ -151,6 +155,23 @@ export const OperationTurn: Story = {
         },
         used: false,
       },
+    }),
+  ],
+}
+
+export const WaitingForOperation: Story = {
+  args: {
+    lobbyCode,
+    onExitGame: () => console.log("Exit game"),
+  },
+  decorators: [
+    buildRoomDecorator({
+      username: "Alice",
+      gameState: {
+        ...operationState,
+        currentTurnPlayer: "Bob",
+      },
+      players: basePlayers.map((p) => ({ ...p, isCurrentTurn: p.username === "Bob" })),
     }),
   ],
 }
