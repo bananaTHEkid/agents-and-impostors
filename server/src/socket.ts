@@ -29,6 +29,30 @@ function advanceTurn(lobbyId: string) {
   io?.to(lobbyId).emit('turn-change', { currentTurnPlayer: next, turnIndex: state.turnIndex });
 }
 
+async function validateOperationTargets(
+  lobbyId: string,
+  username: string,
+  targets: string[],
+  requiredCount: number,
+  db: ReturnType<typeof getDB>
+): Promise<string | undefined> {
+  if (targets.length !== requiredCount || targets.some(target => !validateUsername(target))) {
+    return 'Ungültige Operationsziele';
+  }
+  if (targets.some(target => target === username) || new Set(targets).size !== targets.length) {
+    return 'Du kannst kein eigenes oder doppeltes Ziel wählen';
+  }
+  const placeholders = targets.map(() => '?').join(', ');
+  const rows = await db.all(
+    `SELECT username FROM players WHERE lobby_id = ? AND username IN (${placeholders})`,
+    [lobbyId, ...targets]
+  );
+  if (rows.length !== targets.length) {
+    return 'Mindestens ein Operationsziel wurde nicht gefunden';
+  }
+  return undefined;
+}
+
 async function validateActiveAssignment(
   lobbyId: string,
   username: string,
@@ -179,7 +203,8 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               let operationInfo = JSON.parse(player.operation_info);
               // For client-choice operations, remove any pre-filled targets and revelations before sending to client
               // but preserve availablePlayers for the UI
-              if (player.operation === 'danish intelligence' || player.operation === 'confession' || player.operation === 'defector') {
+              if (player.operation_accepted !== 1 &&
+                (player.operation === 'danish intelligence' || player.operation === 'confession' || player.operation === 'defector')) {
                 // These operations require client input, so remove any server-pre-filled data
                 delete operationInfo.targetPlayer;
                 delete operationInfo.targetPlayer1;
@@ -187,6 +212,16 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
                 delete operationInfo.revealed;
               }
               socket.emit('operation-prepared', { operation: player.operation, info: operationInfo });
+              if (operationInfo.type === 'received_confession') {
+                socket.emit('confession-received', operationInfo);
+              }
+              if (operationInfo.encounter) {
+                socket.emit('encounter-received', {
+                  from: operationInfo.encounter.with,
+                  with: operationInfo.encounter.with,
+                  revealed: operationInfo.encounter.revealed
+                });
+              }
             } catch (parseError) {
               console.error(`Error parsing operation_info for ${username}:`, parseError);
             }
@@ -668,6 +703,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           socket.emit('error', { message: 'Ungültiges Geständnis-Ziel' });
           return;
         }
+        const targetValidationError = await validateOperationTargets(lobbyId, emitter || '', [targetPlayer], 1, db);
+        if (targetValidationError) {
+          socket.emit('error', { message: targetValidationError });
+          return;
+        }
 
         // Identify the confessor strictly as the emitter with 'confession' operation
         const confessor = await db.get("SELECT username, team, operation_info FROM players WHERE lobby_id = ? AND username = ? AND operation = 'confession'", [lobbyId, emitter]);
@@ -961,8 +1001,28 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
 
+        const normalizedOperation = typeof operation === 'string' ? operation.toLowerCase() : '';
+        const selectedTargets = normalizedOperation === 'danish intelligence'
+          ? [payload?.targetPlayer1, payload?.targetPlayer2]
+          : ['unfortunate encounter', 'spy transfer'].includes(normalizedOperation)
+            ? [payload?.targetPlayer]
+            : [];
+        if (selectedTargets.length > 0) {
+          const targetValidationError = await validateOperationTargets(
+            lobbyId,
+            emitter,
+            selectedTargets.filter((target): target is string => typeof target === 'string'),
+            normalizedOperation === 'danish intelligence' ? 2 : 1,
+            db
+          );
+          if (targetValidationError) {
+            socket.emit('error', { message: targetValidationError });
+            return;
+          }
+        }
+
         // Sanitize and persist operation info to the player's row
-        const sanitized = sanitizeOperation({ operation, payload });
+        const sanitized = sanitizeOperation({ operation, ...payload });
         await db.run(
           "UPDATE players SET operation_info = json_patch(COALESCE(operation_info, '{}'), ?) WHERE lobby_id = ? AND username = ?",
           [JSON.stringify(sanitized), lobbyId, emitter]

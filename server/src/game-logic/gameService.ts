@@ -145,7 +145,12 @@ export async function processSpecialOperations(lobbyId: string, roundResult: Rou
         SELECT username, operation, operation_info 
         FROM players 
         WHERE lobby_id = ? AND operation IS NOT NULL
-        ORDER BY username ASC
+        ORDER BY CASE operation
+            WHEN 'grudge' THEN 1
+            WHEN 'scapegoat' THEN 2
+            WHEN 'infatuation' THEN 3
+            ELSE 4
+        END, username ASC
     `, [lobbyId]);
 
     const getTeamsMap = async () => {

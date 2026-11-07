@@ -32,7 +32,7 @@ Defined in `server/src/game-logic/config.ts` (`GAME_CONFIG.OPERATIONS` + `OPERAT
 - danish intelligence: pick two; reveal if one/both impostors or both agents.
 - secret intel: server picks two; same reveal logic as danish intelligence.
 - unfortunate encounter: pick one; both see standardized message about your combined status.
-- spy transfer: pick one; silently swap teams.
+- spy transfer: pick one; silently move the operation holder into the selected player's team.
 - defector (implemented, not in rotation): pick one; convert to opposite team.
 
 ## Add a new operation (checklist)

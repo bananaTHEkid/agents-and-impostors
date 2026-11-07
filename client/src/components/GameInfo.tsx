@@ -22,6 +22,10 @@ interface OperationInfo {
     target2Team?: 'agent' | 'impostor' | string;
     message?: string;
   };
+  encounter?: {
+    with: string;
+    revealed: { message: string };
+  };
 }
 
 interface GameInfoProps {
@@ -38,6 +42,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
   });
   const [opAccepted, setOpAccepted] = useState<boolean>(false);
   const [confessionNotice, setConfessionNotice] = useState<{ fromPlayer: string; theirTeam: 'agent' | 'impostor' | string } | null>(null);
+  const [encounterNotice, setEncounterNotice] = useState<{ with: string; message: string } | null>(null);
   const username: string | null = sessionStorage.getItem('username');
 
   useEffect(() => {
@@ -116,6 +121,12 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         }
       });
 
+      socket.on('encounter-received', (info: { with: string; revealed: { message: string } }) => {
+        if (info?.with && info.revealed?.message) {
+          setEncounterNotice({ with: info.with, message: info.revealed.message });
+        }
+      });
+
       socket.on('player-joined', (data: PlayerJoinedData) => {
         console.log(`${data.username} joined the game.`);
       });
@@ -137,6 +148,7 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
         socket.off('game-message');
         socket.off('assignment-accepted');
         socket.off('confession-received');
+        socket.off('encounter-received');
       };
     }
   }, [socket, username]);
@@ -186,6 +198,14 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
           </div>
         )}
 
+        {encounterNotice && (
+          <div className="mb-3">
+            <div className="p-3 rounded-lg border text-center bg-indigo-50 text-indigo-700 border-indigo-100">
+              <span className="font-medium">Unglückliche Begegnung mit {encounterNotice.with}: {encounterNotice.message}</span>
+            </div>
+          </div>
+        )}
+
         {showOperationInfo && (
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -195,6 +215,12 @@ const GameInfo: React.FC<GameInfoProps> = ({ className }: { className?: string }
             <div className="operation-details text-gray-800">
               {opAccepted && operationInfo && operationInfo.revealed?.message && (
                 <p className="mb-2">{operationInfo.revealed.message}</p>
+              )}
+              {opAccepted && operationInfo?.revealed?.target1Team && operationInfo.revealed.target2Team && (
+                <p className="mb-2">
+                  {operationInfo.revealed.target1Name}: {operationInfo.revealed.target1Team === 'impostor' ? 'Hochstapler' : 'Agent'};{' '}
+                  {operationInfo.revealed.target2Name}: {operationInfo.revealed.target2Team === 'impostor' ? 'Hochstapler' : 'Agent'}
+                </p>
               )}
               {opAccepted && operationInfo && !operationInfo.revealed?.message && (operationInfo as any).message && (
                 <p className="mb-2">{(operationInfo as any).message}</p>

@@ -598,7 +598,7 @@ export const OPERATION_CONFIG: Record<
                 if (!player.operation_info) continue;
                 try {
                     const info = JSON.parse(player.operation_info);
-                    const target = info?.targetPlayer;
+                    const target = info?.targetPlayer ?? info?.payload?.targetPlayer;
                     if (!target || info?.transferApplied) continue;
 
                     const emitterRow = await db.get(

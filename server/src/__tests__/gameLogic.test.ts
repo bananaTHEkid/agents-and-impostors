@@ -207,7 +207,7 @@ describe('operation rules', () => {
   });
 
   it('transfers the spy holder to the selected target team exactly once', async () => {
-    await seedPlayer('spy', 'agent', 'spy transfer', { targetPlayer: 'target' });
+    await seedPlayer('spy', 'agent', 'spy transfer', { payload: { targetPlayer: 'target' } });
     await seedPlayer('target', 'impostor', 'secret tip', {});
 
     const teams = { spy: 'agent', target: 'impostor' };
