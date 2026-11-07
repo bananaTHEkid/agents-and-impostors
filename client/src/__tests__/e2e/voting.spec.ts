@@ -193,6 +193,10 @@ test.describe('Voting Behavior', () => {
             await voteButton.click().catch(err => {
               console.warn(`Click failed: ${err}`);
             });
+
+            const confirmVoteButton = phaseContent.getByTestId('confirm-vote-button');
+            await expect(confirmVoteButton).toBeEnabled({ timeout: 10000 });
+            await confirmVoteButton.click();
             clickedSuccessfully = true;
             
             // Wait for confirmation: look for "Deine Stimme" (your vote) message

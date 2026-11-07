@@ -401,6 +401,22 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           return;
         }
         const lobbyId = lobby.id;
+        const cachedFinalResults = finalResultsByLobby[lobbyId];
+        if (cachedFinalResults) {
+          socket.emit('game-state', {
+            phase: GamePhase.COMPLETED,
+            current_round: cachedFinalResults.totalRounds,
+            currentState: 'completed',
+            results: cachedFinalResults.players.map(player => ({
+              username: player.username,
+              team: player.team,
+              operation: player.operation,
+              win_status: player.winStatus
+            }))
+          });
+          socket.emit('game-end', cachedFinalResults);
+          return;
+        }
         // Emit basic game-state
         socket.emit('game-state', { phase: lobby.phase, current_round: lobby.current_round } as any);
         // Emit player list with teams
