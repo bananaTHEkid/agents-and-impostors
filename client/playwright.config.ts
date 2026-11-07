@@ -65,8 +65,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: [
-    // Start the backend for development E2E runs unless explicitly disabled.
-    ...(process.env.START_SERVER !== 'false' ? [{
+    // The E2E suite always requires the API; reuse an already-running server locally.
+    {
       command: 'npm run dev',
       cwd: '../server',
       url: `${SERVER_URL}/health`,
@@ -78,7 +78,7 @@ export default defineConfig({
         PORT: SERVER_PORT,
         NODE_ENV: 'development',
       },
-    }] : []),
+    },
     
     // Client server - different commands for dev vs production
     ...(isProduction ? [
