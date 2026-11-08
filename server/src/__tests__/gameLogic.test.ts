@@ -2,12 +2,21 @@ import { initDB, getDB } from '../db/db';
 import { assignTeamsAndOperations, calculateRoundResults } from '../game-logic/gameService';
 import { GAME_CONFIG, OPERATION_CONFIG } from '../game-logic/config';
 import { RoundResult } from '../game-logic/types';
+import { getPublicOperationName } from '../socket';
 
 const fakeIo = {
   to: () => ({ emit: jest.fn() })
 } as any;
 
 const noopSocketLookup = () => undefined;
+
+describe('public operation names', () => {
+  it('masks hidden operations while preserving public operation names', () => {
+    expect(getPublicOperationName('secret tip')).toBe('versteckte Operation');
+    expect(getPublicOperationName('secret intel')).toBe('secret intel');
+    expect(getPublicOperationName()).toBe('unbekannte Operation');
+  });
+});
 
 describe('game start assignment', () => {
   beforeEach(async () => {

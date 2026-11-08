@@ -21,6 +21,12 @@ const finalResultsByLobby: { [lobbyId: string]: FinalResults } = {};
 // In-memory turn state per lobby. Persisting in DB is optional and can be added later.
 const turnStateByLobby: { [lobbyId: string]: { order: string[]; turnIndex: number } } = {};
 
+export function getPublicOperationName(operationName?: string): string {
+  if (!operationName) return 'unbekannte Operation';
+  const operation = GAME_CONFIG.OPERATIONS.find(({ name }) => name === operationName);
+  return operation?.hidden ? 'versteckte Operation' : operationName;
+}
+
 function advanceTurn(lobbyId: string) {
   const state = turnStateByLobby[lobbyId];
   if (!state || !state.order || state.order.length === 0) return;
@@ -406,10 +412,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           if (assignedRow && assignedRow.operation_assigned) continue;
 
           const playerSocketId = connectionManager.getSocketId(player);
-          io?.to(lobbyId).emit('operation-assigned-public', { player, operation: operationMeta?.hidden ? 'hidden operation' : operationMeta?.name });
+          const publicOperationName = getPublicOperationName(operationMeta?.name);
+          io?.to(lobbyId).emit('operation-assigned-public', { player, operation: publicOperationName });
           // Broadcast standardized log for initial assignment as well
           if (operationMeta?.name) {
-            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${player} hat die Operation ${operationMeta.name} erhalten` });
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${player} hat die Operation ${publicOperationName} erhalten` });
           }
 
           if (playerSocketId) {
@@ -623,10 +630,11 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
           const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
           const playerSocketId = connectionManager.getSocketId(candidate);
 
-          console.log(`Weise Operation '${nextOpMeta?.name}' Spieler ${candidate} in Lobby ${lobbyCode} zu`);
-          io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+          const publicOperationName = getPublicOperationName(nextOpMeta?.name);
+          console.log(`Weise Operation '${publicOperationName}' Spieler ${candidate} in Lobby ${lobbyCode} zu`);
+          io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: publicOperationName });
           if (nextOpMeta?.name) {
-            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
+            io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${publicOperationName} erhalten` });
           }
 
           if (playerSocketId) {
@@ -774,9 +782,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
               const playerSocketId = connectionManager.getSocketId(candidate);
 
-              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              const publicOperationName = getPublicOperationName(nextOpMeta?.name);
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: publicOperationName });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${publicOperationName} erhalten` });
               }
 
               if (playerSocketId) {
@@ -929,9 +938,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
               const playerSocketId = connectionManager.getSocketId(candidate);
 
-              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              const publicOperationName = getPublicOperationName(nextOpMeta?.name);
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: publicOperationName });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${publicOperationName} erhalten` });
               }
 
               if (playerSocketId) {
@@ -1129,7 +1139,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
         } else {
           socket.emit('operation-used', { success: true, message: 'Operation übermittelt.' });
         }
-        io?.to(lobbyId).emit('game-message', { type: 'system', text: `${emitter} hat die Operation ${operation} verwendet` });
+        io?.to(lobbyId).emit('game-message', {
+          type: 'system',
+          text: `${emitter} hat die Operation ${getPublicOperationName(assignedOpName)} verwendet`
+        });
         // Do not advance turn here; turn will advance when assigning the next candidate below
 
         // Treat operation submission as acceptance for client-choice operations.
@@ -1169,9 +1182,10 @@ export function setupSocket(server: ReturnType<typeof createServer>) {
               const nextOpMeta = playerOps.find(op => op.player === candidate)?.operation;
               const playerSocketId = connectionManager.getSocketId(candidate);
 
-              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: nextOpMeta?.hidden ? 'hidden operation' : nextOpMeta?.name });
+              const publicOperationName = getPublicOperationName(nextOpMeta?.name);
+              io?.to(lobbyId).emit('operation-assigned-public', { player: candidate, operation: publicOperationName });
               if (nextOpMeta?.name) {
-                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${nextOpMeta.name} erhalten` });
+                io?.to(lobbyId).emit('game-message', { type: 'system', text: `${candidate} hat die Operation ${publicOperationName} erhalten` });
               }
 
               if (playerSocketId) {
