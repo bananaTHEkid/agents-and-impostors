@@ -40,6 +40,12 @@ docker compose up -d
 - Client bundle is built with `VITE_SERVER_URL=http://localhost:5001` (set in compose). Change that value and rebuild the client if your server runs elsewhere.
 - Server CORS origins are set in compose (`CLIENT_ORIGIN`) to allow the client at `http://localhost:3000`.
 
+## GitHub releases
+- Publishing a GitHub release builds and publishes the client and server images to GHCR, tagged with the release tag and `latest`. To publish images for an existing release, manually run the **Publish Release Images** workflow and enter its tag.
+- The images are `ghcr.io/bananathekid/agents-and-impostors-client` and `ghcr.io/bananathekid/agents-and-impostors-server`.
+- Set the repository Actions variable `VITE_SERVER_URL` to the public server URL before publishing a release to bake it into the client image. If unset, the image uses `http://localhost:5001`.
+- GitHub automatically provides source code ZIP and tar.gz archives for each release tag.
+
 ## Testing
 - Unit: `cd client && npm run test:unit`
 - E2E (auto-start servers): `cd client && START_SERVER=true CLIENT_PORT=5173 SERVER_PORT=5001 npm run test:e2e`
